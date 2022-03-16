@@ -5,26 +5,32 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ## Data and Global Variables
 
 ### Constants:
- - NOISE_PCT: percent background noise (probably has to be removed)
- - WIDTH: width of display
+ - `NOISE_PCT`: percent background noise (probably has to be removed)
+ - `WIDTH`: width of display
 
 ### Global Variables:
- - frame_buffer: additional space for display (confirm this is needed?)
- - crab:
- - world:
+ - `frame_buffer`: additional space for display (confirm this is needed?)
+ - `crab`:
+   - +0: Position of crab
+   - +4: Status
+   - +8: ?
+ - `world`:
+   - +0: Level
+   - +4: Background Color
+   - +8: ?
 
 ## Functions
 
 ### Painting Functions:
- - generate_background()
- - stamp_crab()
- - stamp_open_clam(*pixel)
- - stamp_closed_clam(*pixel)
- - stamp_pufferfish(*pixel)
- - stamp_seahorse(*pixel)
+ - `generate_background()`
+ - `stamp_crab()`
+ - `stamp_open_clam(*pixel)`
+ - `stamp_closed_clam(*pixel)`
+ - `stamp_pufferfish(*pixel)`
+ - `stamp_seahorse(*pixel)`
 
 ### Un-Painting Functions:
- - unstamp_crab()
+ - `unstamp_crab()`
 
 ## Ideas: 
  - Can jump up fast, but fall down slow.
