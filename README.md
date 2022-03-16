@@ -23,6 +23,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 
 ### Painting Functions:
  - `generate_background()`
+ - `build_platform(*start, int length)`
  - `stamp_crab()`
  - `stamp_open_clam(*pixel)`
  - `stamp_closed_clam(*pixel)`
