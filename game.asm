@@ -57,12 +57,40 @@ world:		.space		12
 .globl main
 main:	jal generate_background
 
+	# Crab
 	la $t0, crab		# $t0 = crab.pos
 	li $t1, 32700		# $t1 = position offset
 	add $t1, $t1, $gp	# $t1 = position
 	sw $t1, ($t0)		# crab.pos = position
-	
 	jal stamp_crab
+	
+	# Seahorse
+	addi $sp, $sp, -4	# make room on stack
+	li $t2, 7000		# $t2 = 7000
+	add $t2, $t2, $gp	# $t2 = position
+	sw $t2, 0($sp)		# push to stack
+	jal stamp_seahorse
+	
+	# Closed Clam
+	addi $sp, $sp, -4	
+	li $t2, 32600		
+	add $t2, $t2, $gp	
+	sw $t2, 0($sp)		
+	jal stamp_closed_clam
+	
+	# Open Clam
+	addi $sp, $sp, -4
+	li $t2, 26000		
+	add $t2, $t2, $gp	
+	sw $t2, 0($sp)		
+	jal stamp_open_clam
+	
+	# Pufferfish
+	addi $sp, $sp, -4
+	li $t2, 13000		
+	add $t2, $t2, $gp	
+	sw $t2, 0($sp)		
+	jal stamp_pufferfish
 	
 	
 exit:	li  $v0, 10
@@ -105,6 +133,13 @@ bg_update:
 	j bg_loop		# jump back to start
 
 bg_end:	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
+# build_platform(*start, int length):
+#	Builds a horizontal platform starting at `*start`, with `length` pixels of length
+build_platform:
+	jr $ra
 # ---------------------------------------------------------------------------------------
 
 
@@ -205,14 +240,226 @@ stamp_crab:
 
 # stamp_open_clam(*pixel):
 # 	"Stamps" a open clam shell onto the display given it is positioned at *pixel
+#	Uses registers $t0-$t5
 stamp_open_clam:
+	li $t1, 0x00c496ff	# $t1 = shell midtone
+	li $t2, 0x00c7a3f7	# $t2 = shell highlight
+	li $t3, 0x009a7ac7	# $t3 = shell lo-light
+	li $t4, 0x00ffffff	# $t4 = pearl
+	li $t5, 0x00faf9e3	# $t5 = pearl shadow
+	
+	# Pop pixel address from stack
+	lw $t0, 0($sp)		# $t0 = address of pixel
+	addi, $sp, $sp, 4	# reclaim space on stack
+	
+	# Color the pixels appropriately
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t5, -4($t0)
+	sw $t5, 0($t0)
+	sw $t5, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t5, -4($t0)
+	sw $t4, 0($t0)
+	sw $t4, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -8($t0)
+	sw $t5, -4($t0)
+	sw $t4, 0($t0)
+	sw $t4, 4($t0)
+	sw $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t2, -12($t0)
+	sw $t1, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t1, 8($t0)
+	sw $t2, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	
+	# Return to caller
 	jr $ra
 # ---------------------------------------------------------------------------------------
 
 
 # stamp_closed_clam(*pixel):
 # 	"Stamps" a closed clam shell onto the display given it is positioned at *pixel
+#	Uses registers $t0-$t3
 stamp_closed_clam:
+	li $t1, 0x00c496ff	# $t1 = shell midtone
+	li $t2, 0x00c7a3f7	# $t2 = shell highlight
+	li $t3, 0x009a7ac7	# $t3 = shell lo-light
+	
+	# Pop pixel address from stack
+	lw $t0, 0($sp)		# $t0 = address of pixel
+	addi, $sp, $sp, 4	# reclaim space on stack
+	
+	# Color the pixels appropriately
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t1, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t1, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t3, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t3, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t3, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t3, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t2, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t2, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t1, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	
+	# Return to caller
 	jr $ra
 # ---------------------------------------------------------------------------------------
 
@@ -220,6 +467,352 @@ stamp_closed_clam:
 # stamp_pufferfish(*pixel):
 # 	"Stamps" a pufferfish onto the display given it is positioned at *pixel
 stamp_pufferfish:
+	li $t1, 0x00a8c267	# $t1 = base color
+	li $t2, 0x00929644	# $t2 = fin/spikes color
+	li $t3, 0x00ffffff	# $t3 = belly color
+	li $t4, 0x00d1d1d1	# $t4 = belly spikes color
+	li $t5, 0x00000000	# $t5 = black
+	
+	# Pop pixel address from stack
+	lw $t0, 0($sp)		# $t0 = address of pixel
+	addi, $sp, $sp, 4	# reclaim space on stack
+	
+	# Color the pixels appropriately
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t5, -8($t0)
+	sw $t5, -4($t0)
+	sw $t5, 0($t0)
+	sw $t5, 4($t0)
+	sw $t5, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t2, 36($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t2, 36($t0)
+	sw $t2, 40($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -36($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t5, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t5, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -40($t0)
+	sw $t2, -36($t0)
+	sw $t2, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t5, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t5, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t2, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t2, 32($t0)
+	sw $t2, 36($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t2, 40($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -28($t0)
+	sw $t2, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t2, 24($t0)
+	sw $t2, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -32($t0)
+	sw $t2, -28($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t2, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 16($t0)
+	sw $t2, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -20($t0)
+	sw $t2, 0($t0)
+	sw $t2, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, 0($t0)
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	sw $t2, -52($t0)
+	sw $t2, -48($t0)
+	sw $t2, -44($t0)
+	sw $t2, -40($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t5, -8($t0)
+	sw $t5, -4($t0)
+	sw $t5, 0($t0)
+	sw $t5, 4($t0)
+	sw $t5, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t2, 40($t0)
+	sw $t2, 44($t0)
+	sw $t2, 48($t0)
+	sw $t2, 52($t0)
+	addi $t0, $t0, WIDTH
+	sw $t2, -48($t0)
+	sw $t2, -44($t0)
+	sw $t2, -40($t0)
+	sw $t2, -36($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t3, -8($t0)
+	sw $t5, -4($t0)
+	sw $t5, 0($t0)
+	sw $t5, 4($t0)
+	sw $t3, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t2, 36($t0)
+	sw $t2, 40($t0)
+	sw $t2, 44($t0)
+	sw $t2, 48($t0)
+	addi $t0, $t0, WIDTH
+	sw $t2, -48($t0)
+	sw $t2, -44($t0)
+	sw $t2, -40($t0)
+	sw $t2, -36($t0)
+	sw $t2, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t2, 32($t0)
+	sw $t2, 36($t0)
+	sw $t2, 40($t0)
+	sw $t2, 44($t0)
+	sw $t2, 48($t0)
+	addi $t0, $t0, WIDTH
+	sw $t2, -44($t0)
+	sw $t2, -40($t0)
+	sw $t2, -36($t0)
+	sw $t3, -28($t0)
+	sw $t3, -24($t0)
+	sw $t3, -20($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t3, 20($t0)
+	sw $t3, 24($t0)
+	sw $t3, 28($t0)
+	sw $t2, 36($t0)
+	sw $t2, 40($t0)
+	sw $t2, 44($t0)
+	addi $t0, $t0, WIDTH
+	sw $t2, -44($t0)
+	sw $t2, -40($t0)
+	sw $t3, -24($t0)
+	sw $t3, -20($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t3, 20($t0)
+	sw $t3, 24($t0)
+	sw $t2, 40($t0)
+	sw $t2, 44($t0)
+	addi $t0, $t0, WIDTH
+	sw $t2, -44($t0)
+	sw $t4, -28($t0)
+	sw $t4, -24($t0)
+	sw $t3, -20($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t3, 20($t0)
+	sw $t4, 24($t0)
+	sw $t4, 28($t0)
+	sw $t2, 44($t0)
+	addi $t0, $t0, WIDTH
+	sw $t4, -32($t0)
+	sw $t3, -16($t0)
+	sw $t3, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t3, 12($t0)
+	sw $t3, 16($t0)
+	sw $t4, 32($t0)
+	addi $t0, $t0, WIDTH
+	sw $t4, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, 0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t4, 12($t0)
+	addi $t0, $t0, WIDTH
+	sw $t4, -16($t0)
+	sw $t4, 16($t0)
+	
 	jr $ra
 # ---------------------------------------------------------------------------------------
 	
