@@ -35,8 +35,9 @@
 #####################################################################
 
 .eqv	WIDTH		256		# Width of display
-.eqv	SLEEP_DUR	50		# Sleep duration between loops
+.eqv	SLEEP_DUR	20		# Sleep duration between loops
 .eqv	INIT_POS	32700		# Initial position of the crab (offset from $gp)
+.eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
 .eqv	SEA_COL_4	0x000b3e8a	# Sea colour, darkest
 .eqv	SEA_COL_3	0x000d47a1	#	:
 .eqv	SEA_COL_2	0x001052b5	#	:
@@ -49,19 +50,25 @@ frame_buffer: 	.space		32768
 crab:		.space		12
 # struct crab {
 #	int position; 	# holds address of pixel it is at
-#	int status; 	# 0-walk_0, 1-walk_1, 2-jump/fall, 3-dead
-#	int ?;
+#	int state; 	# 0-walk_0, 1-walk_1, 2-jump/fall, 3-dead
+#	int jump_timer; # counts down frames of rising, before falling down
 # } crab;
-world:		.space		4
+world:		.space		8
 # struct world {
 #	int level:	# 4, 3, 2, 1, 0
+#	int score;	# Holds score (?)
+# }
+clam:		.space		12
+# struct clam {
+#	int visible;	# 0 if invisible, 1 if visible
+#	int position;	# Pixel address of position of clam
+#	int state;	# 0 if closed, 1 if open
 # }
 
 .text
 .globl main
-########### Initialize Game Values ##########
-main:	
-	# `world` initial data
+########## Initialize Game Values ##########
+main:	# `world` initial data
 	la $t0, world
 	li $t1, 4
 	sw $t1, ($t0)		# world.level = 4
@@ -72,11 +79,66 @@ main:
 	add $t1, $t1, $gp
 	sw $t1, ($t0)		# crab.pos = addr($gp) + INIT_POS
 	li $t1, 0
-	sw $t1, 4($t0)		# crab.status = 0
-
-########### Testing Functions, For Now ##########
+	sw $t1, 4($t0)		# crab.state = 0
+	
+	# Fill in background
 	jal generate_background
 	jal stamp_crab
+	
+########## Get Keyboard Input ##########
+
+detect_keystroke:
+	# KEYSTROKE
+	#	+0: 1 if key hit, 0 if key not hit
+	#	+4: ascii value of key that was hit
+
+	li $t9, KEYSTROKE  	# $t9 
+	lw $t8, 0($t9) 		
+	bne $t8, 1, no_key_hit	# if no key was hit, branch to `no_key hit` 
+				# If it reaches here, a key was hit.
+	lw $t9, 4($t9) 		# $t9 = last key hit 
+	beq $t9, 0x61, key_a  	# If $t9 == 'a', branch to `key_a`
+	beq $t9, 0x64, key_d  	# If $t9 == 'd', branch to `key_d`
+	beq $t9, 0x77, key_w  	# If $t9 == 'w', branch to `key_w`
+	beq $t9, 0x70, key_p  	# If $t9 == 'p', branch to `key_p`
+	j no_key_hit		# Otherwise, treat like no key pressed
+	
+########## Update Display ##########
+
+key_a:	jal unstamp_crab
+	jal pressed_a		# Move character left
+	j key_input_done
+
+key_d:	jal unstamp_crab
+	jal pressed_d		# Move character right
+	j key_input_done
+
+key_w:	jal unstamp_crab
+	jal pressed_w		# Jump character
+	j key_input_done
+
+key_p:	jal unstamp_crab #?
+	jal pressed_p		# Reset Game
+	j key_input_done
+
+key_input_done:
+	jal stamp_crab		# Add crab to display
+
+no_key_hit:
+	# Don't need to update character position
+	
+########## Sleep and Repeat ##########
+
+	# Sleep for `SLEEP_DUR` milliseconds
+	li $a0, SLEEP_DUR
+	li $v0, 32
+	syscall
+	
+	j detect_keystroke	# Check for next key
+
+########## Testing Functions, For Now #########
+	
+	
 	
 	# Seahorse
 	addi $sp, $sp, -4	# make room on stack
@@ -109,6 +171,98 @@ main:
 	
 exit:	li  $v0, 10
 	syscall
+
+#########################################################################
+#	KEYBOARD INPUT FUNCTIONS					#
+#########################################################################
+
+# pressed_a():
+#	Move crab left if applicable, update new location in `crab` struct
+#	Additionally, toggle walk state between 0 and 1
+#	TODO: Check for walls
+pressed_a:
+	la $t1, crab
+	lw $t2, 0($t1)	# $t2 = crab.position
+	lw $t3, 4($t1)	# $t3 = crab.state
+	
+	beq $t3, 2, pa_move_left	# If currently jumping (state 2), just move left
+	beq $t3, 3, pa_exit		# If dead (state 3), don't change anything
+	beq $t3, 0, pa_toggle_1		# If state==0, toggle walk state from 0 -> 1
+	
+	# Otherwise toggle walk state from 1 -> 0
+	li $t3, 0		
+	sw $t3, 4($t1)		# crab.state = 0
+	j pa_move_left
+
+pa_toggle_1:
+	li $t3, 1
+	sw $t3, 4($t1)		# crab.state = 1
+	
+pa_move_left:			# Update position stored in `crab`
+	addi $t2, $t2, -4	# $t2 = crab.position - 4
+	sw $t2, 0($t1)		# crab.position = crab.position - 4
+pa_exit:
+	jr $ra
+# ---------------------------------------------------------------------------------------
+	
+# pressed_d():
+#	Move crab right if applicable, update new location in `crab` struct
+#	Additionally, toggle walk state between 0 and 1
+#	TODO: Check for walls
+pressed_d:
+	la $t1, crab
+	lw $t2, 0($t1)	# $t2 = crab.position
+	lw $t3, 4($t1)	# $t3 = crab.state
+	
+	beq $t3, 2, pd_move_right	# If currently jumping (state 2), just move right
+	beq $t3, 3, pd_exit		# If dead (state 3), don't change anything
+	beq $t3, 0, pd_toggle_1		# If state==0, toggle walk state from 0 -> 1
+	
+	# Otherwise toggle walk state from 1 -> 0
+	li $t3, 0		
+	sw $t3, 4($t1)		# crab.state = 0
+	j pd_move_right
+
+pd_toggle_1:
+	li $t3, 1
+	sw $t3, 4($t1)		# crab.state = 1
+	
+pd_move_right:
+	addi $t2, $t2, 4	# $t2 = crab.position + 4
+	sw $t2, 0($t1)		# crab.position = crab.position + 4
+pd_exit:
+	jr $ra
+# ---------------------------------------------------------------------------------------
+	
+# pressed_w():
+#	Jump crab if applicable
+#	Update new position in `crab` struct
+#	TODO: Wall detection, gravity, falling, etc.
+pressed_w:
+	la $t1, crab
+	lw $t2, 0($t1)	# $t2 = crab.position
+	lw $t3, 4($t1)	# $t3 = crab.state
+	
+	beq $t3, 2, pw_move_up	# If currently jumping (state 2), just move up
+	beq $t3, 3, pw_exit	# If dead (state 3), don't change anything
+	
+	# Ensure state is set to 2 (jumping)
+	li $t3, 2		
+	sw $t3, 4($t1)		# crab.state = 2
+	
+pw_move_up:
+	addi $t2, $t2, -WIDTH	# $t2 = crab.position - WIDTH
+	sw $t2, 0($t1)		# crab.position = crab.position + 1
+pw_exit:
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
+# pressed_p():
+#	Reset game. TBD
+pressed_p:
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
 
 #########################################################################
 #	PAINTING FUNCTIONS						#
@@ -970,11 +1124,40 @@ stamp_seahorse:
 #	UN-PAINTING FUNCTIONS						#
 #########################################################################
 
+# get_bg_color():
+#	Helper function. Given the values in the struct `world`,
+#	Sets the register $a0 to the background color.
+#	Todo: see about what register I can use here
+get_bg_color:
+	la $t3, world
+	lw $t3, ($t3)		# $t3 = world.level
+	beq $t3, 0, gbc_level_0	# branch if world.level == 0
+	beq $t3, 1, gbc_level_1	# branch if world.level == 1
+	beq $t3, 2, gbc_level_2	# branch if world.level == 2
+	beq $t3, 3, gbc_level_3	# branch if world.level == 3
+	li $a0, SEA_COL_4	# $a0 = bg color 4
+	j gbc_exit
+gbc_level_0:
+	li $a0, SEA_COL_0	# $a0 = bg color 0
+	j gbc_exit
+gbc_level_1:
+	li $a0, SEA_COL_1	# $a0 = bg color 1
+	j gbc_exit
+gbc_level_2:
+	li $a0, SEA_COL_2	# $a0 = bg color 2
+	j gbc_exit
+gbc_level_3:
+	li $a0, SEA_COL_3	# $a0 = bg color 3
+gbc_exit:
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
 # unstamp_crab():
 # 	Removes the crab from the display
 #	Uses registers $t0, $t1
 unstamp_crab:
-	li $t1, 0x000d47a1	# $t1 = sea colour
+	li $t1, SEA_COL_4	# $t1 = sea colour
 
 	# Get pixel address
 	la $t0, crab		# $t0 = addr(crab struct)
