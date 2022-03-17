@@ -5,8 +5,11 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ## Data and Global Variables
 
 ### Constants:
- - `NOISE_PCT`: percent background noise (probably has to be removed)
  - `WIDTH`: width of display
+ - `SLEEP_DUR`: duration of sleep between loops
+ - `INIT_POS`: position of crab at game start, offset from $gp
+ - `SEA_COL_0` through `SEA_COL_4`: background colours
+ - `DARKNESS`: amount to darked sprites by, for each level in `world`
 
 ### Global Variables:
  - `frame_buffer`: additional space for display (confirm this is needed?)
@@ -15,9 +18,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
    - +4: Status
    - +8: ?
  - `world`:
-   - +0: Level
-   - +4: Background Color
-   - +8: ?
+   - +0: Level	(4,3,2,1,0)
 
 ## Functions
 
@@ -27,6 +28,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_crab()`
  - `stamp_open_clam(*pixel)`
  - `stamp_closed_clam(*pixel)`
+ - `stamp_piranha_L(*pixel)`
+ - `stamp_piranha_R(*pixel)`
  - `stamp_pufferfish(*pixel)`
  - `stamp_seahorse(*pixel)`
 
