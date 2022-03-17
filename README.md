@@ -1,4 +1,4 @@
-## Yet-to-be-Named Crab Game in Assembly
+# Yet-to-be-Named Crab Game in Assembly
 
 This is a platforming game running in MIPS assembly. It operates in the MARS MIPS simulator.
 
@@ -8,19 +8,31 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `WIDTH`: width of display
  - `SLEEP_DUR`: duration of sleep between loops
  - `INIT_POS`: position of crab at game start, offset from $gp
+ - `KEYSTROKE`: address where key inputs is stored
  - `SEA_COL_0` through `SEA_COL_4`: background colours
- - `DARKNESS`: amount to darked sprites by, for each level in `world`
+ - `DARKNESS`: amount to darken sprites by, for each level in `world`
 
 ### Global Variables:
  - `frame_buffer`: additional space for display (confirm this is needed?)
  - `crab`:
-   - +0: Position of crab
-   - +4: Status
-   - +8: ?
+   - +0: Position - Address of pixel
+   - +4: State - {0=walk_0, 1=walk_1, 2=jump, 3=dead}
+   - +8: Jump timer - counts frames of rising, before falling down
  - `world`:
-   - +0: Level	(4,3,2,1,0)
+   - +0: Level - {4,3,2,1,0}
+   - +4: Score
+ - `clam`:
+   - +0: Visible - {0=invisible, 1=visible}
+   - +4: Position - Address of pixel
+   - +8: State - {0=closed, 1=open}
 
 ## Functions
+
+### Keyboard Input Functions:
+ - `pressed_a()`
+ - `pressed_d()`
+ - `pressed_w()`
+ - `pressed_p()`
 
 ### Painting Functions:
  - `generate_background()`
@@ -34,15 +46,13 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_seahorse(*pixel)`
 
 ### Un-Painting Functions:
+ - `get_bg_color()`
  - `unstamp_crab()`
 
 ## Ideas: 
  - Can jump up fast, but fall down slow.
- - Pufferfish transcend upwards, floating past. Have to dodge them.
- - Get points from pearls, sand dollars?
- - Seahorse -> temporary immunity? 
- - Static level screens probably easier. non-infinite game
- - Horizontally travelling eels like super mario
- - platforms that look like coral, dynamic-lengthed?
- - background gets lighter as you ascend
- - piranha enemy that paces along platforms
+ - Pufferfish float up and down, through platforms
+ - Piranha paces left and right along platforms
+ - Get points from pearls, maybe sand dollars?
+ - Seahorse grants temporary immunity
+
