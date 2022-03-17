@@ -34,34 +34,48 @@
 # 
 #####################################################################
 
-.eqv	NOISE_PCT	10	# Percent of noise in background
-.eqv	WIDTH		256	# Width of display
+.eqv	WIDTH		256		# Width of display
+.eqv	SLEEP_DUR	50		# Sleep duration between loops
+.eqv	INIT_POS	32700		# Initial position of the crab (offset from $gp)
+.eqv	SEA_COL_4	0x000b3e8a	# Sea colour, darkest
+.eqv	SEA_COL_3	0x000d47a1	#	:
+.eqv	SEA_COL_2	0x001052b5	#	:
+.eqv	SEA_COL_1	0x00125dcc	#	:
+.eqv	SEA_COL_0	0x001467db	# Sea colour, lightest
+.eqv	DARKNESS	0x00050505	# amount to darken colours by, per level
 
 .data
 frame_buffer: 	.space		32768
 crab:		.space		12
 # struct crab {
 #	int position; 	# holds address of pixel it is at
-#	int status; 	# 0-walk_0, 1-walk_1, 2-jump/fall,
+#	int status; 	# 0-walk_0, 1-walk_1, 2-jump/fall, 3-dead
 #	int ?;
 # } crab;
-world:		.space		12
+world:		.space		4
 # struct world {
-#	int level:
-#	int color:
+#	int level:	# 4, 3, 2, 1, 0
 # }
-				
-
 
 .text
 .globl main
-main:	jal generate_background
+########### Initialize Game Values ##########
+main:	
+	# `world` initial data
+	la $t0, world
+	li $t1, 4
+	sw $t1, ($t0)		# world.level = 4
+	
+	# `crab` initial data
+	la $t0, crab
+	li $t1, INIT_POS
+	add $t1, $t1, $gp
+	sw $t1, ($t0)		# crab.pos = addr($gp) + INIT_POS
+	li $t1, 0
+	sw $t1, 4($t0)		# crab.status = 0
 
-	# Crab
-	la $t0, crab		# $t0 = crab.pos
-	li $t1, 32700		# $t1 = position offset
-	add $t1, $t1, $gp	# $t1 = position
-	sw $t1, ($t0)		# crab.pos = position
+########### Testing Functions, For Now ##########
+	jal generate_background
 	jal stamp_crab
 	
 	# Seahorse
@@ -87,7 +101,7 @@ main:	jal generate_background
 	
 	# Pufferfish
 	addi $sp, $sp, -4
-	li $t2, 13000		
+	li $t2, 12988		
 	add $t2, $t2, $gp	
 	sw $t2, 0($sp)		
 	jal stamp_pufferfish
@@ -101,34 +115,41 @@ exit:	li  $v0, 10
 #########################################################################
 
 # generate_background():
-#	Fills the display with a noisy background
-# 	Uses registers $t0, $t1, $t2, $t3, $t8, $t9
+#	Fills the display with a background colour
+# 	Uses registers $t0, $t1, $t2, $t9
 generate_background:
 	li $t0, 0		# $t0 = i
-	li $t1, 32768		# $t1 = 32768
-	li $t3, NOISE_PCT	# $t3 = NOISE_PCT
-	li $t8, 0x000d47a1	# $t8 = primary bg color
-	li $t9, 0x000c4499	# $t9 = secondary bg colour
+	li $t1, 32768		# $t1 = 32768 (128*64*4)
+	
+	# Determine bg color based on level in `world` struct
+	la $t3, world
+	lw $t3, ($t3)		# $t3 = world.level
+	beq $t3, 0, bg_level_0	# branch if world.level == 0
+	beq $t3, 1, bg_level_1	# branch if world.level == 1
+	beq $t3, 2, bg_level_2	# branch if world.level == 2
+	beq $t3, 3, bg_level_3	# branch if world.level == 3
+	li $t9, SEA_COL_4	# $t8 = bg color 4
+	j bg_loop
+bg_level_0:
+	li $t9, SEA_COL_0	# $t8 = bg color 0
+	j bg_loop
+bg_level_1:
+	li $t9, SEA_COL_1	# $t8 = bg color 1
+	j bg_loop
+bg_level_2:
+	li $t9, SEA_COL_2	# $t8 = bg color 2
+	j bg_loop
+bg_level_3:
+	li $t9, SEA_COL_3	# $t8 = bg color 3
 	
 bg_loop:
 	beq $t0, $t1, bg_end	# branch to `bg_end` if i = 8192
 	
-	# get address of display at index i
+	# Colour the ith pixel
 	add $t2, $gp, $t0	# $t2 = addr($gp) + i
+	sw $t9, ($t2)		# Set pixel at addr($gp) + i to primary bg color
 	
-	# Generate random int from 0 to 100
-	li $a1, 100	# $a1 = 100, upper bound on random number
-	li $v0, 42
-	syscall		# $a0 = rand(0,100)
-	
-	blt $a0, $t3, bg_add_noise	# if rand() < NOISE_PCT, branch to `bg_add_noise`
-	sw $t8, ($t2)			# Set pixel at addr($gp) + i to primary bg color
-	j bg_update
-
-bg_add_noise:
-	sw $t9, ($t2)			# Set pixel at addr($gp) + i to secondary bg color
-	
-bg_update:
+	# Update i and loop again
 	addi $t0, $t0, 4	# i = i + 4
 	j bg_loop		# jump back to start
 
@@ -148,9 +169,20 @@ build_platform:
 #	Uses registers $t0, $t1, $t2, $t3, $t4
 stamp_crab:
 	li $t1, 0x00cc552d	# $t1 = crab base
-	li $t2, 0x00a33612	# $t2 = crab shell
+	li $t2, 0x00a33615	# $t2 = crab shell
 	li $t3, 0x00ffffff	# $t3 = white
 	li $t4, 0x00000000	# $t4 = black
+	
+	# Determine darkening factor
+	la $t5, world
+	lw $t5, ($t5)		# $t5 = world.level
+	li $t6, DARKNESS	# 
+	mul $t6, $t6, $t5	# $t6 = $t6 * world.level
+	
+	# Darken colors based on darkening factor
+	sub $t1, $t1, $t6
+	sub $t2, $t2, $t6
+	sub $t3, $t3, $t6
 
 	# Get pixel address
 	la $t0, crab		# $t0 = addr(crab struct)
@@ -240,13 +272,24 @@ stamp_crab:
 
 # stamp_open_clam(*pixel):
 # 	"Stamps" a open clam shell onto the display given it is positioned at *pixel
-#	Uses registers $t0-$t5
+#	Uses registers $t0-$t7
 stamp_open_clam:
 	li $t1, 0x00c496ff	# $t1 = shell midtone
 	li $t2, 0x00c7a3f7	# $t2 = shell highlight
 	li $t3, 0x009a7ac7	# $t3 = shell lo-light
 	li $t4, 0x00ffffff	# $t4 = pearl
 	li $t5, 0x00faf9e3	# $t5 = pearl shadow
+	
+	# Determine darkening factor
+	la $t6, world
+	lw $t6, ($t6)		# $t6 = world.level
+	li $t7, DARKNESS	# 
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	
+	# Darken colors based on darkening factor
+	sub $t1, $t1, $t7
+	sub $t2, $t2, $t7
+	sub $t3, $t3, $t7
 	
 	# Pop pixel address from stack
 	lw $t0, 0($sp)		# $t0 = address of pixel
@@ -374,11 +417,22 @@ stamp_open_clam:
 
 # stamp_closed_clam(*pixel):
 # 	"Stamps" a closed clam shell onto the display given it is positioned at *pixel
-#	Uses registers $t0-$t3
+#	Uses registers $t0-$t3, $t6, $t7
 stamp_closed_clam:
 	li $t1, 0x00c496ff	# $t1 = shell midtone
 	li $t2, 0x00c7a3f7	# $t2 = shell highlight
 	li $t3, 0x009a7ac7	# $t3 = shell lo-light
+	
+	# Determine darkening factor
+	la $t6, world
+	lw $t6, ($t6)		# $t6 = world.level
+	li $t7, DARKNESS	# 
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	
+	# Darken colors based on darkening factor
+	sub $t1, $t1, $t7
+	sub $t2, $t2, $t7
+	sub $t3, $t3, $t7
 	
 	# Pop pixel address from stack
 	lw $t0, 0($sp)		# $t0 = address of pixel
@@ -464,14 +518,49 @@ stamp_closed_clam:
 # ---------------------------------------------------------------------------------------
 
 
+# stamp_piranha_L(*pixel):
+# 	"Stamps" a left-facing piranha onto the display given it is positioned at *pixel
+stamp_piranha_L:
+	li $t1, 0x00312e73	# $t1 = base color
+	li $t2, 0x00661a1f	# $t2 = belly color
+	li $t3, 0x009595ad	# $t3 = teeth color
+	li $t4, 0x00000000	# $t4 = black
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
+# stamp_piranha_R(*pixel):
+# 	"Stamps" a right-facing piranha onto the display given it is positioned at *pixel
+stamp_piranha_R:
+	li $t1, 0x00312e73	# $t1 = base color
+	li $t2, 0x00661a1f	# $t2 = belly color
+	li $t3, 0x009595ad	# $t3 = teeth color
+	li $t4, 0x00000000	# $t4 = black
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
 # stamp_pufferfish(*pixel):
 # 	"Stamps" a pufferfish onto the display given it is positioned at *pixel
+#	Uses registers $t0-$t7
 stamp_pufferfish:
 	li $t1, 0x00a8c267	# $t1 = base color
 	li $t2, 0x00929644	# $t2 = fin/spikes color
 	li $t3, 0x00ffffff	# $t3 = belly color
 	li $t4, 0x00d1d1d1	# $t4 = belly spikes color
 	li $t5, 0x00000000	# $t5 = black
+	
+	# Determine darkening factor
+	la $t6, world
+	lw $t6, ($t6)		# $t6 = world.level
+	li $t7, DARKNESS	# 
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	
+	# Darken colors based on darkening factor
+	sub $t1, $t1, $t7
+	sub $t2, $t2, $t7
+	sub $t3, $t3, $t7
+	sub $t4, $t4, $t7
 	
 	# Pop pixel address from stack
 	lw $t0, 0($sp)		# $t0 = address of pixel
@@ -813,17 +902,28 @@ stamp_pufferfish:
 	sw $t4, -16($t0)
 	sw $t4, 16($t0)
 	
+	# Return to caller
 	jr $ra
 # ---------------------------------------------------------------------------------------
 	
 	
 # stamp_seahorse(*pixel):
 # 	"Stamps" a seahorse onto the display given it is positioned at *pixel
-#	Uses registers $t0, $t1, $t2, $t3
+#	Uses registers $t0-$t3, $t6, $t7
 stamp_seahorse:
-	li $t1, 0x00ff9800	# $t1 = seahorse colour
+	li $t1, 0x00ff9815	# $t1 = seahorse colour
 	li $t2, 0x00ffeb3b	# $t2 = fin colour
 	li $t3, 0x00000000	# $t3 = black
+	
+	# Determine darkening factor
+	la $t6, world
+	lw $t6, ($t6)		# $t6 = world.level
+	li $t7, DARKNESS	# 
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	
+	# Darken colors based on darkening factor
+	sub $t1, $t1, $t7
+	sub $t2, $t2, $t7
 
 	# Pop pixel address from stack
 	lw $t0, 0($sp)		# $t0 = address of pixel
