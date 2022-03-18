@@ -29,19 +29,14 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ## Functions
 
 ### Keyboard Input Functions:
- - `pressed_a()`
- - `pressed_d()`
- - `pressed_w()`
- - `pressed_p()`
+ - `key_pressed()`
 
 ### Painting Functions:
  - `generate_background()`
  - `build_platform(*start, int length)`
  - `stamp_crab()`
- - `stamp_open_clam(*pixel)`
- - `stamp_closed_clam(*pixel)`
- - `stamp_piranha_L(*pixel)`
- - `stamp_piranha_R(*pixel)`
+ - `stamp_clam(*pixel)`
+ - `stamp_piranha(*pixel)`
  - `stamp_pufferfish(*pixel)`
  - `stamp_seahorse(*pixel)`
 
