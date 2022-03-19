@@ -36,7 +36,7 @@
 
 .eqv	WIDTH		256		# Width of display
 .eqv	SLEEP_DUR	20		# Sleep duration between loops
-.eqv	INIT_POS	32700		# Initial position of the crab (offset from $gp)
+.eqv	INIT_POS	32444		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
 .eqv	SEA_COL_4	0x000b3e8a	# Sea colour, darkest
 .eqv	SEA_COL_3	0x000d47a1	#	:
@@ -44,6 +44,7 @@
 .eqv	SEA_COL_1	0x00125dcc	#	:
 .eqv	SEA_COL_0	0x001467db	# Sea colour, lightest
 .eqv	DARKNESS	0x00050505	# amount to darken colours by, per level
+.eqv	NUM_PLATFORMS	5		# Maximum number of platforms
 
 .data
 frame_buffer: 	.space		32768
@@ -55,15 +56,33 @@ crab:		.space		12
 # } crab;
 world:		.space		8
 # struct world {
-#	int level:	# 4, 3, 2, 1, 0
+#	int level:	# 0,1,2,3,4,5,6... However many I end up making
+#	int darkness:	# 4, 3, 2, 1, 0
 #	int score;	# Holds score (?)
 # }
-clam:		.space		12
+clam:		.space		8
 # struct clam {
-#	int visible;	# 0 if invisible, 1 if visible
+#	int state;	# 0 if invisible, 1 if open, 2 if closed
 #	int position;	# Pixel address of position of clam
-#	int state;	# 0 if closed, 1 if open
 # }
+piranha1:	.space		8
+piranha2:	.space		8
+# struct piranhaX {
+#	int state;	# 0 if invisible, 1 if left-facing, 2 if right-facing
+#	int position;	# Pixel address of position of piranha
+# }
+pufferfish:	.space		8
+# struct pufferfish {
+#	int state;	# 0 if invisible, 1 if ascending, 2 if descending
+#	int position;	# Pixel address of position of pufferfish
+# }
+seahorse:	.space		8
+# struct seahorse {
+#	int state;	# 0 if invisible, 1 if visible
+#	int position;	# Pixel address of position of seahorse
+# }
+platforms:	.double		NUM_PLATFORMS	# Stores pairs of (position, length) for platforms
+						# length==0 implies the platform does not exist
 
 .text
 .globl main
@@ -82,75 +101,56 @@ clam:		.space		12
 # $t0 - temporary values
 
 ########## Initialize Game Values ##########
-main:	# `world` initial data
-	la $s0, world
-	li $t0, 4
-	sw $t0, ($s0)		# world.level = 4
+main:	
 	
-	# `crab` initial data
-	la $s1, crab
-	li $t0, INIT_POS
-	add $t0, $t0, $gp
-	sw $t0, ($s1)		# crab.pos = addr($gp) + INIT_POS
-	li $t0, 0
-	sw $t1, 4($s1)		# crab.state = 0
+	# Setup data for Level 0
+	jal  gen_level_0
 	
-	# Fill in background
-	jal generate_background
-	jal stamp_crab
+	# Display inital level
+	jal  generate_background
+	jal  stamp_platforms
+	jal  stamp_crab
 	
 ########## Get Keyboard Input ##########
 
 main_loop:
-	li $t0, KEYSTROKE
-	lw $t0, 0($t0) 			# $t0 = 1 if key hit, 0 otherwise
-	bne $t0, 1, update_display	# if no key was hit, branch to `update_display` 
+	li   $t0, KEYSTROKE
+	lw   $t0, 0($t0) 		# $t0 = 1 if key hit, 0 otherwise
+	bne  $t0, 1, update_display	# if no key was hit, branch to `update_display` 
 				
 				# If it reaches here, a key was hit.
-	jal unstamp_crab	# remove crab before we modify its location
-	jal key_pressed		# Update position in `crab` struct	
+	jal  unstamp_crab	# remove crab before we modify its location
+	jal  key_pressed	# Update position in `crab` struct	
 
 ########## Update Display ##########
 
 update_display:
-	jal stamp_crab		# Add crab to display
+	# jal  unstamp_clam	# Remove all entities
+	# jal  unstamp_piranha
+	# jal  unstamp_pufferfish
+	# jal  unstamp_seahorse
+	# jal  update_positions	# Update positions of all entities
+	jal  stamp_platforms	# Re-add platforms
+	jal  stamp_crab		# Add crab to display
+	jal  stamp_piranha	# Add all entities
+	jal  stamp_clam
+	# jal  stamp_seahorse
+	# jal  stamp_pufferfish
 	
 ########## Sleep and Repeat ##########
 
 	# Sleep for `SLEEP_DUR` milliseconds
-	li $a0, SLEEP_DUR
-	li $v0, 32
+	li   $a0, SLEEP_DUR
+	li   $v0, 32
 	syscall
 	
-	j main_loop	# Jump back to main loop, checking for next key press
+	j    main_loop	# Jump back to main loop, checking for next key press
 
-########## Testing Functions, For Now #########
-		
-	# Seahorse
-	addi $sp, $sp, -4	# make room on stack
-	li $t2, 7000		# $t2 = 7000
-	add $t2, $t2, $gp	# $t2 = position
-	sw $t2, 0($sp)		# push to stack
-	jal stamp_seahorse
+########## Exit Program ##########
 	
-	# Clam
-	addi $sp, $sp, -4	
-	li $t2, 32600		
-	add $t2, $t2, $gp	
-	sw $t2, 0($sp)		
-	jal stamp_clam
-	
-	# Pufferfish
-	addi $sp, $sp, -4
-	li $t2, 12988		
-	add $t2, $t2, $gp	
-	sw $t2, 0($sp)		
-	jal stamp_pufferfish
-	
-	
-exit:	li  $v0, 10
+exit:	li   $v0, 10
 	syscall
-
+	
 #########################################################################
 #	KEYBOARD INPUT FUNCTIONS					#
 #########################################################################
@@ -159,64 +159,149 @@ exit:	li  $v0, 10
 #	Determines and updates new position for the crab given the current key pressed.
 #	$t1: addr(crab), $t2: crab_pos, $t3: crab_state, $t9: key_input
 key_pressed:
-	li $t9, KEYSTROKE  	# $t9 
-	lw $t9, 4($t9) 		# $t9 = last key hit 
+	li   $t9, KEYSTROKE  	# $t9 
+	lw   $t9, 4($t9) 	# $t9 = last key hit 
 	
 	# Get crab data
-	la $t1, crab	# $t1 = addr(crab)
-	lw $t2, 0($t1)	# $t2 = crab.position
-	lw $t3, 4($t1)	# $t3 = crab.state
+	la   $t1, crab		# $t1 = addr(crab)
+	lw   $t2, 0($t1)	# $t2 = crab.position
+	lw   $t3, 4($t1)	# $t3 = crab.state
 	
 	# If dead (state 3), don't change anything.
-	beq $t3, 3, key_input_done
+	beq  $t3, 3, key_input_done
 	
 	# Check which key pressed
-	beq $t9, 0x61, key_a  	# If $t9 == 'a', branch to `key_a`
-	beq $t9, 0x64, key_d  	# If $t9 == 'd', branch to `key_d`
-	beq $t9, 0x77, key_w  	# If $t9 == 'w', branch to `key_w`
-	beq $t9, 0x70, key_p  	# If $t9 == 'p', branch to `key_p`
-	j key_input_done	# Otherwise, treat like no key pressed
+	beq  $t9, 0x61, key_a  	# If $t9 == 'a', branch to `key_a`
+	beq  $t9, 0x64, key_d  	# If $t9 == 'd', branch to `key_d`
+	beq  $t9, 0x77, key_w  	# If $t9 == 'w', branch to `key_w`
+	beq  $t9, 0x70, key_p  	# If $t9 == 'p', branch to `key_p`
+	j    key_input_done	# Otherwise, treat like no key pressed
 
 key_a:	# MOVE LEFT		# Update position stored in `crab`
 	addi $t2, $t2, -4	# $t2 = crab.position - 4
-	sw $t2, 0($t1)		# crab.position = crab.position - 4
+	sw   $t2, 0($t1)	# crab.position = crab.position - 4
 
-	bge $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
-	j key_toggle_check		# Toggle between walk states (state 1 and 0)
+	bge  $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
+	j    key_toggle_check		# Toggle between walk states (state 1 and 0)
 
 key_d:	# MOVE RIGHT		# Update position stored in `crab`
 	addi $t2, $t2, 4	# $t2 = crab.position + 4
-	sw $t2, 0($t1)		# crab.position = crab.position + 4
+	sw   $t2, 0($t1)	# crab.position = crab.position + 4
 
-	bge $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
-	j key_toggle_check		# Toggle between walk states (state 1 and 0)
+	bge  $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
+	j    key_toggle_check		# Toggle between walk states (state 1 and 0)
 
 key_w:	# JUMP			# Update position stored in `crab`
 	addi $t2, $t2, -WIDTH	# $t2 = crab.position - WIDTH
-	sw $t2, 0($t1)		# crab.position = crab.position - WIDTH
-	li $t3, 2		# $t3 = 2
-	sw $t3, 4($t1)		# crab.state = 2
-	j key_input_done
+	sw   $t2, 0($t1)	# crab.position = crab.position - WIDTH
+	li   $t3, 2		# $t3 = 2
+	sw   $t3, 4($t1)	# crab.state = 2
+	j    key_input_done
 
 key_p:	# RESET
 	# TODO
-	j key_input_done
+	j    key_input_done
 	
-key_toggle_check:
-	beq $t3, 0, key_toggle_1	# If state==0, toggle walk state from 0 -> 1
+key_toggle_check: # If state==0, toggle walk state from 0 -> 1
+	beq  $t3, 0, key_toggle_1	
 	
 	# Toggle crab.state from 1 to 0
-	li $t3, 0
-	sw $t3, 4($t1)		# crab.state = 0
-	j key_input_done
+	li   $t3, 0
+	sw   $t3, 4($t1)	# crab.state = 0
+	j    key_input_done
 	
-key_toggle_1:
-	# Toggle crab.state from 0 to 1
-	li $t3, 1
-	sw $t3, 4($t1)		# crab.state = 1
+key_toggle_1: # Toggle crab.state from 0 to 1
+	li   $t3, 1
+	sw   $t3, 4($t1)	# crab.state = 1
 
 key_input_done:
-	jr $ra
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+#########################################################################
+#	INITIALIZE LEVEL FUNCTIONS					#
+#########################################################################
+
+# gen_level_0():
+# 	Sets up level 0 details in global structs
+gen_level_0:
+
+	# world data
+	la   $t1, world
+	li   $t0, 0
+	sw   $t0, 0($t1)	# world.level = 0
+	li   $t0, 4
+	sw   $t0, 4($t1)	# world.darkness = 4
+
+	# crab data
+	la   $t1, crab
+	li   $t0, INIT_POS
+	add  $t0, $t0, $gp
+	sw   $t0, 0($t1)	# crab.pos = addr($gp) + INIT_POS
+	li   $t0, 0
+	sw   $t0, 4($t1)	# crab.state = 0 (walk state 0)
+	sw   $t0, 8($t1)	# crab.jump_timer = 0
+	
+	# piranha data
+	la   $t1, piranha1	# $t1 = piranha1
+	li   $t0, 0
+	sw   $t0, 0($t1)	# piranha1.state = 0
+	la   $t1, piranha2	# $t1 = piranha2
+	li   $t0, 0
+	sw   $t0, 0($t1)	# piranha2.state = 0
+	
+	# pufferfish data
+	la   $t1, pufferfish
+	li   $t0, 0
+	sw   $t0, 0($t1)	# pufferfish.visible = 0
+	
+	# clam data
+	la   $t1, clam
+	li   $t0, 1
+	sw   $t0, 0($t1)	# clam.state = 1 (open)
+	li   $t0, 14888
+	add  $t0, $t0, $gp
+	sw   $t0, 4($t1)	# clam.pos = addr($gp) + INIT_POS
+	#la   $t1, clam
+	#li   $t0, 0
+	#sw   $t0, 0($t1)	# clam.state = 0 (invisible)
+	
+	# seahorse data
+	la   $t1, seahorse
+	li   $t0, 0
+	sw   $t0, 0($t1)	# seahorse.state = 0
+	
+	# Platforms
+	la   $t1, platforms
+	li   $t0, 25600
+	add  $t0, $t0, $gp
+	sw   $t0, 0($t1)	# platform_1.pos = 25600 + $gp
+	li   $t0, 4
+	sw   $t0, 4($t1)	# platform_1.len = 4
+	li   $t0, 21676
+	add  $t0, $t0, $gp
+	sw   $t0, 8($t1)	# platform_2.pos = 21676 + $gp
+	li   $t0, 5
+	sw   $t0, 12($t1)	# platform_2.len = 5
+	li   $t0, 15104
+	add  $t0, $t0, $gp
+	sw   $t0, 16($t1)	# platform_3.pos = 15104 + $gp
+	li   $t0, 10
+	sw   $t0, 20($t1)	# platform_3.len = 10
+	li   $t0, 7936
+	add  $t0, $t0, $gp
+	sw   $t0, 24($t1)	# platform_4.pos = 7936 + $gp
+	li   $t0, 3
+	sw   $t0, 28($t1)	# platform_4.len = 3
+	li   $t0, 4000
+	add  $t0, $t0, $gp
+	sw   $t0, 32($t1)	# platform_5.pos = 4000 + $gp
+	li   $t0, 4
+	sw   $t0, 36($t1)	# platform_5.len = 4
+	
+	# Return to caller
+	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
@@ -230,39 +315,134 @@ key_input_done:
 generate_background:	
 	# Push return address onto stack
 	addi $sp, $sp, -4
-	sw $ra, 0($sp)
+	sw   $ra, 0($sp)
 	
 	# Obtain background color based on level in `world` struct
-	jal get_bg_color
+	jal  _get_bg_color
 	
 	# Pop result and old return address from stack
-	lw $t9, 0($sp)		# $t9 = sea colour
-	lw $ra, 4($sp)		# $ra = old return address
+	lw   $t9, 0($sp)	# $t9 = sea colour
+	lw   $ra, 4($sp)	# $ra = old return address
 	addi $sp, $sp, 8
 	
 	# Set up indices of iteration
-	li $t0, 0		# $t0 = i
-	li $t1, 32768		# $t1 = 32768 (128*64*4)
+	li   $t0, 0		# $t0 = i
+	li   $t1, 32768		# $t1 = 32768 (128*64*4)
 
 bg_loop:
-	beq $t0, $t1, bg_end	# branch to `bg_end` if i == 32768
+	beq  $t0, $t1, bg_end	# branch to `bg_end` if i == 32768
 	
 	# Colour the ith pixel
-	add $t2, $gp, $t0	# $t2 = addr($gp) + i
-	sw $t9, ($t2)		# Set pixel at addr($gp) + i to primary bg color
+	add  $t2, $gp, $t0	# $t2 = addr($gp) + i
+	sw   $t9, ($t2)		# Set pixel at addr($gp) + i to primary bg color
 	
 	# Update i and loop again
 	addi $t0, $t0, 4	# i = i + 4
-	j bg_loop		# jump back to start
+	j    bg_loop		# jump back to start
 
-bg_end:	jr $ra
+bg_end:	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
-# build_platform(*start, int length):
-#	Builds a horizontal platform starting at `*start`, with `length` pixels of length
-build_platform:
-	jr $ra
+# _build_platform(*start, int length):
+#	Builds a horizontal platform starting at `*start`, with `length` units of length
+#	$t0: pixel_address, $t1-$t2: colours, $t3: length, $t6: world, $t7: temp
+_build_platform:
+	# Pop parameters from stack
+	lw   $t3, 0($sp)	# $t3 = length
+	lw   $t0, 4($sp)	# $t0 = address of pixel
+	addi $sp, $sp, 8	# reclaim space on stack
+
+	# Prepare colours
+	li  $t1, 0x00ff429d	# $t1 = pink
+	li  $t2, 0x00ffe785	# $t2 = yellow
+	
+	# Determine darkening factor
+	la   $t6, world
+	lw   $t6, 4($t6)	# $t6 = world.darkness
+	li   $t7, DARKNESS	# 
+	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	
+	# Darken colors based on darkening factor
+	sub  $t1, $t1, $t7
+	sub  $t2, $t2, $t7
+	
+bp_loop:
+	beq  $t3, 0, bp_exit	# if length == 0, branch to `bp_exit`
+	move $t7, $t0		# $t7 = pixel address (will be overwritten)
+	
+	# Draw one "unit" of platform
+	sw   $t1, 4($t7)
+	sw   $t1, 8($t7)
+	sw   $t1, 12($t7)
+	addi $t7, $t7, WIDTH
+	sw   $t1, 0($t7)
+	sw   $t1, 4($t7)
+	sw   $t2, 8($t7)
+	sw   $t1, 12($t7)
+	sw   $t1, 16($t7)
+	addi $t7, $t7, WIDTH
+	sw   $t1, 0($t7)
+	sw   $t2, 4($t7)
+	sw   $t1, 8($t7)
+	sw   $t2, 12($t7)
+	sw   $t1, 16($t7)
+	addi $t7, $t7, WIDTH
+	sw   $t1, 0($t7)
+	sw   $t1, 4($t7)
+	sw   $t2, 8($t7)
+	sw   $t1, 12($t7)
+	sw   $t1, 16($t7)
+	addi $t7, $t7, WIDTH
+	sw   $t1, 4($t7)
+	sw   $t1, 8($t7)
+	sw   $t1, 12($t7)
+
+	# Update before looping
+	addi $t0, $t0, 16	# $t0 = pixel address + 16
+	addi $t3, $t3, -1	# $t3 = length - 1
+	j    bp_loop
+
+bp_exit: # Return to caller
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# stamp_platforms():
+#	Builds the platforms of the level, based on what is in `platforms` array
+#	$t4: platform struct, $t5: plat location, $t6: length, $t7: temp, $t8: index
+stamp_platforms:
+	li   $t8, 0		# i = 0
+	la   $t4, platforms	# $t4 = addr(platforms)
+	
+splat_loop: # while i <= NUM_PLATFORMS :
+	beq  $t8, NUM_PLATFORMS, splat_exit	# if i==NUM_PLATFORMS, branch to `splat_exit`
+	
+	# Get values for this platform
+	sll  $t7, $t8, 3	# $t7 = 8 * i
+	add  $t7, $t4, $t7	# $t7 = addr(platforms) + 8*i
+	lw   $t5, 0($t7)	# $t5 = platform.position
+	lw   $t6, 4($t7)	# $t6 = platform.length
+	
+	# Push parameters for _build_platform() to stack
+	addi $sp, $sp, -12	# Make room on stack
+	sw $ra, 8($sp)		# Push return address
+	sw $t5, 4($sp)		# Push position
+	sw $t6, 0($sp)		# Push length
+	
+	# Build this platform
+	jal _build_platform
+	
+	# Pop old return address from stack
+	lw $ra, 0($sp)	
+	addi $sp, $sp, 4
+	
+	# Update index
+	addi $t8, $t8, 1	# i = i + 1
+	j splat_loop		# Restart loop
+
+splat_exit:
+	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
@@ -277,9 +457,9 @@ stamp_crab:
 	
 	# Determine darkening factor
 	la $t5, world
-	lw $t5, ($t5)		# $t5 = world.level
+	lw $t5, 4($t5)		# $t5 = world.darkness
 	li $t6, DARKNESS	# 
-	mul $t6, $t6, $t5	# $t6 = $t6 * world.level
+	mul $t6, $t6, $t5	# $t6 = $t6 * world.darkness
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t6
@@ -372,8 +552,8 @@ stamp_crab:
 # ---------------------------------------------------------------------------------------
 
 
-# stamp_clam(*pixel):
-# 	"Stamps" a clam shell onto the display given it is positioned at *pixel
+# stamp_clam():
+# 	"Stamps" a clam shell onto the display
 #	$t0: pixel_address, $t1-$t5: colors, $t6: world, $t7: temp
 stamp_clam:
 	li $t1, 0x00c496ff	# $t1 = shell midtone
@@ -384,23 +564,21 @@ stamp_clam:
 	
 	# Determine darkening factor
 	la $t6, world
-	lw $t6, ($t6)		# $t6 = world.level
+	lw $t6, 4($t6)		# $t6 = world.darkness
 	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t7
 	sub $t2, $t2, $t7
 	sub $t3, $t3, $t7
 	
-	# Pop pixel address from stack
-	lw $t0, 0($sp)		# $t0 = address of pixel
-	addi, $sp, $sp, 4	# reclaim space on stack
-	
-	# Determine if clam is open or closed
-	la $t7, clam
-	lw $t7 8($t7)		# $t7 = clam.state
-	beq $t7, 0, sc_closed	# if clam.state == 0, branch to `sc_closed`
+	# Get pixel address and clam state
+	la $t7, clam		# $t7 = addr(clam struct)
+	lw $t0, 4($t7)		# $t0 = clam.position
+	lw $t7 0($t7)		# $t7 = clam.state
+	beq $t7, 0, sc_exit	# if clam.state == 0, branch to `sc_exit`
+	beq $t7, 2, sc_closed	# if clam.state == 2, branch to `sc_closed`
 				# else, clam is open
 	
 	# Stamp an OPEN clam
@@ -601,14 +779,258 @@ sc_exit:
 # ---------------------------------------------------------------------------------------
 
 
-# stamp_piranha(*pixel):
-# 	"Stamps" a piranha onto the display given it is positioned at *pixel
-#	$t0: pixel_address, $t1-$t4: colors, $t6: world, $t7: temp
+# stamp_piranha():
+# 	"Stamps" the piranhas onto the display
+#	TODO: Display the second piranha. It only displays the first, for now.
+#	$t0: pixel_address, $t1-$t4: colors, $t5: piranha, $t6: world, $t7: temp
 stamp_piranha:
 	li $t1, 0x00312e73	# $t1 = base color
 	li $t2, 0x00661a1f	# $t2 = belly color
 	li $t3, 0x009595ad	# $t3 = teeth color
 	li $t4, 0x00000000	# $t4 = black
+	
+	# Determine darkening factor
+	la $t6, world
+	lw $t6, 4($t6)		# $t6 = world.darkness
+	li $t7, DARKNESS	# 
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	
+	# Darken colors based on darkening factor
+	sub $t1, $t1, $t7
+	sub $t2, $t2, $t7
+	sub $t3, $t3, $t7
+	
+	# Determine if piranha is visible, and if it faces left or right 
+	la $t5, piranha1
+	lw $t7 0($t5)		# $t7 = piranha.state
+	beq $t7, 0, sp_exit	# if piranha.state == 0, branch to `sp_exit`
+	lw $t0, 4($t5)		# $t0 = piranha.position
+	beq $t7, 1, sp_left	# if piranha.state == 1, branch to `sp_left`
+				# else, facing right
+				
+				# idea, at end, la $t7 piranha2, then loop back to after la $t7 piranha1,
+				# add a branch if $t7 == piranha1, see if this works
+			
+	# Stamp a right-facing piranha
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)	
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t2, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t2, -24($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 16($t0)
+	sw $t2, 20($t0)
+	sw $t2, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t2, -20($t0)
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t2, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t3, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t3, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t4, 8($t0)
+	sw $t4, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	j sp_exit
+				
+sp_left: # Stamp a left-facing piranha
+	addi $t0, $t0, -WIDTH
+	sw $t1, 12($t0)
+	sw $t1, 8($t0)
+	sw $t1, 4($t0)	
+	addi $t0, $t0, -WIDTH
+	sw $t1, 28($t0)
+	sw $t1, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t2, -4($t0)
+	sw $t2, -8($t0)
+	sw $t2, -12($t0)
+	sw $t2, -16($t0)
+	sw $t2, -20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 28($t0)
+	sw $t2, 24($t0)
+	sw $t2, 16($t0)
+	sw $t2, 12($t0)
+	sw $t2, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t2, -8($t0)
+	sw $t2, -12($t0)
+	sw $t2, -16($t0)
+	sw $t2, -20($t0)
+	sw $t2, -24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 28($t0)
+	sw $t1, 24($t0)
+	sw $t2, 20($t0)
+	sw $t2, 16($t0)
+	sw $t2, 12($t0)
+	sw $t2, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t1, -8($t0)
+	sw $t1, -12($t0)
+	sw $t2, -28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 24($t0)
+	sw $t1, 20($t0)
+	sw $t1, 16($t0)
+	sw $t1, 12($t0)
+	sw $t1, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t1, -8($t0)
+	sw $t1, -12($t0)
+	sw $t3, -16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 28($t0)
+	sw $t1, 24($t0)
+	sw $t1, 20($t0)
+	sw $t1, 16($t0)
+	sw $t1, 12($t0)
+	sw $t1, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t1, -8($t0)
+	sw $t1, -12($t0)
+	sw $t1, -16($t0)
+	sw $t3, -20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 28($t0)
+	sw $t1, 24($t0)
+	sw $t1, 12($t0)
+	sw $t1, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t4, -8($t0)
+	sw $t4, -12($t0)
+	sw $t1, -16($t0)
+	sw $t1, -20($t0)
+	sw $t1, -24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 28($t0)
+	sw $t1, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t1, -8($t0)
+	sw $t1, -12($t0)
+	sw $t1, -16($t0)
+	sw $t1, -20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, 12($t0)
+	sw $t2, 8($t0)
+	sw $t1, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t1, -8($t0)
+	sw $t1, -12($t0)
+	sw $t1, -16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, 16($t0)
+	sw $t2, 12($t0)
+	sw $t2, 8($t0)
+	sw $t2, 4($t0)
+	sw $t1, 0($t0)
+	sw $t1, -4($t0)
+	sw $t1, -8($t0)
+	
+sp_exit:
 	jr $ra
 # ---------------------------------------------------------------------------------------
 
@@ -625,9 +1047,9 @@ stamp_pufferfish:
 	
 	# Determine darkening factor
 	la $t6, world
-	lw $t6, ($t6)		# $t6 = world.level
+	lw $t6, 4($t6)		# $t6 = world.darkness
 	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t7
@@ -990,9 +1412,9 @@ stamp_seahorse:
 	
 	# Determine darkening factor
 	la $t6, world
-	lw $t6, ($t6)		# $t6 = world.level
+	lw $t6, 4($t6)		# $t6 = world.darkness
 	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.level
+	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t7
@@ -1043,36 +1465,36 @@ stamp_seahorse:
 #	UN-PAINTING FUNCTIONS						#
 #########################################################################
 
-# get_bg_color():
+# _get_bg_color():
 #	Returns bg_color
 #	Given the values in the struct `world`, pushes the 
 #	correct background color onto the stack
 #	$t1: bg_color, $t3: world
-get_bg_color:
-	la $t3, world
-	lw $t3, ($t3)		# $t3 = world.level
-	beq $t3, 0, gbc_level_0	# branch if world.level == 0
-	beq $t3, 1, gbc_level_1	# branch if world.level == 1
-	beq $t3, 2, gbc_level_2	# branch if world.level == 2
-	beq $t3, 3, gbc_level_3	# branch if world.level == 3
-	li $t1, SEA_COL_4	# $t1 = bg color 4
-	j gbc_exit
+_get_bg_color:
+	la   $t3, world
+	lw   $t3, 4($t3)		# $t3 = world.darkness
+	beq  $t3, 0, gbc_level_0	# branch if world.darkness == 0
+	beq  $t3, 1, gbc_level_1	# branch if world.darkness == 1
+	beq  $t3, 2, gbc_level_2	# branch if world.darkness == 2
+	beq  $t3, 3, gbc_level_3	# branch if world.darkness == 3
+	li   $t1, SEA_COL_4	# $t1 = bg color 4
+	j    gbc_exit
 gbc_level_0:
-	li $t1, SEA_COL_0	# $t1 = bg color 0
-	j gbc_exit
+	li   $t1, SEA_COL_0	# $t1 = bg color 0
+	j    gbc_exit
 gbc_level_1:
-	li $t1, SEA_COL_1	# $t1 = bg color 1
-	j gbc_exit
+	li   $t1, SEA_COL_1	# $t1 = bg color 1
+	j    gbc_exit
 gbc_level_2:
-	li $t1, SEA_COL_2	# $t1 = bg color 2
-	j gbc_exit
+	li   $t1, SEA_COL_2	# $t1 = bg color 2
+	j    gbc_exit
 gbc_level_3:
-	li $t1, SEA_COL_3	# $t1 = bg color 3
+	li   $t1, SEA_COL_3	# $t1 = bg color 3
 gbc_exit:
 	# Push result onto stack
 	addi $sp, $sp, -4
-	sw $t1, 0($sp)
-	jr $ra
+	sw   $t1, 0($sp)
+	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
@@ -1085,7 +1507,7 @@ unstamp_crab:
 	sw $ra, 0($sp)
 	
 	# Obtain background color
-	jal get_bg_color
+	jal _get_bg_color
 	
 	# Pop result and old return address from stack
 	lw $t1, 0($sp)		# $t1 = sea colour
