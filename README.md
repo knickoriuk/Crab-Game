@@ -12,6 +12,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `SEA_COL_0` through `SEA_COL_4`: background colours
  - `DARKNESS`: amount to darken sprites by, multiplied by world.darkness
  - `NUM_PLATFORMS`: maximum number of platforms
+ - `CRAB_UP_DIST`: height of crab jumps
 
 ### Global Variables:
  - `frame_buffer`: additional space for display (confirm this is needed?)
@@ -46,8 +47,9 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 
 ## Functions
 
-### Keyboard Input Functions:
+### Keyboard Input and Movement Functions:
  - `key_pressed()`
+ - `do_jumps()`
 
 ### Initialize Level Functions:
  - `gen_level_0()`
