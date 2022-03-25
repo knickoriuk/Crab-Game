@@ -13,6 +13,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `DARKNESS`: amount to darken sprites by, multiplied by world.darkness
  - `NUM_PLATFORMS`: maximum number of platforms
  - `CRAB_UP_DIST`: height of crab jumps
+ - `HORIZ_DIST`: distance moved left/right 
+ - `UPPER_LIMIT`: height to pass to get to next level
 
 ### Global Variables:
  - `frame_buffer`: additional space for display (confirm this is needed?)
@@ -50,6 +52,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ### Keyboard Input and Movement Functions:
  - `key_pressed()`
  - `do_jumps()`
+ - `update_positions()`
 
 ### Initialize Level Functions:
  - `gen_level_0()`
@@ -66,11 +69,25 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 
 ### Un-Painting Functions:
  - `_get_bg_color()`
+ - `unstamp_platforms()`
  - `unstamp_crab()`
+ - `unstamp_clam()`
+ - `unstamp_piranha()`
+ - `unstamp_pufferfish($a0=*position)`
+ - `unstamp_seahorse()`
+
+## To do:
+ - [ ] Ensure all `stamp_` functions have switched to register-based calling convention
+ - [ ] Complete `unstamp_` functions
+ - [ ] Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level
+ - [ ] Implement `update_positions()` to move pufferfish and piranha positions
+ - [ ] Make Level 1 (`gen_level_1()`)
+ - [ ] Falling off screen leads to game over
+ - [ ] Detect if touching other entities
 
 ## Ideas: 
- - Can jump up fast, but fall down slow.
  - Pufferfish float up and down, through platforms
  - Piranha paces left and right along platforms
  - Get points from pearls, maybe sand dollars?
  - Seahorse grants temporary immunity
+ - Collision detection: can make square hitboxes, iterate over the pixels in the hitbox range to see if one of four points of the crab passed through it (upper left, upper right, lower left, lower right)
