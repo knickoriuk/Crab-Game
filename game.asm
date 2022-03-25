@@ -36,7 +36,7 @@
 #####################################################################
 
 .eqv	WIDTH		256		# Width of display
-.eqv	SLEEP_DUR	50		# Sleep duration between loops
+.eqv	SLEEP_DUR	40		# Sleep duration between loops
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
 .eqv	SEA_COL_4	0x000b3e8a	# Sea colour, darkest
@@ -46,7 +46,9 @@
 .eqv	SEA_COL_0	0x001467db	# Sea colour, lightest
 .eqv	DARKNESS	0x00050505	# amount to darken colours by, per level
 .eqv	NUM_PLATFORMS	6		# Maximum number of platforms
-.eqv	CRAB_UP_DIST	10		# Height of crab jump
+.eqv	CRAB_UP_DIST	7		# Duration of crab jump ascension
+.eqv	HORIZ_DIST	8		# Distance moved left/right per screen refresh
+.eqv	UPPER_LIMIT	4000		# TODO: Height that, if surpassed, moves to next level 
 
 .data
 frame_buffer: 	.space		32768
