@@ -3,13 +3,14 @@
 # CSCB58 Winter 2022 Assembly Final Project 
 # University of Toronto, Scarborough 
 # 
-# Student: Kate Nickoriuk, 1003893691, nickoriu, k.nickoriuk@mail.utoronto.ca 
+# Student: Kate Nickoriuk	k.nickoriuk@mail.utoronto.ca 
+# Student #: 1003893691		Student ID: nickoriu
 # 
 # Bitmap Display Configuration: 
-# - Unit width in pixels: 4 (update this as needed)  
-# - Unit height in pixels: 4 (update this as needed) 
-# - Display width in pixels: 256 (update this as needed) 
-# - Display height in pixels: 512 (update this as needed) 
+# - Unit width in pixels: 4
+# - Unit height in pixels: 4
+# - Display width in pixels: 256
+# - Display height in pixels: 512
 # - Base Address for Display: 0x10008000 ($gp) 
 # 
 # Which milestones have been reached in this submission? 
@@ -55,7 +56,7 @@ crab:		.space		12
 #	int state; 	# 0-walk_0, 1-walk_1, 2-jump/fall, 3-dead
 #	int jump_timer; # counts down frames of rising, before falling down
 # } crab;
-world:		.space		8
+world:		.space		12
 # struct world {
 #	int level:	# 0,1,2,3,4,5,6... However many I end up making
 #	int darkness:	# 4, 3, 2, 1, 0
@@ -91,17 +92,18 @@ platforms:	.double		NUM_PLATFORMS	# Stores pairs of (position, length) for platf
 ########## Register Assignment for main() ##########
 # $s0 - `world` data pointer
 # $s1 - `crab` data pointer
-# $s2 -
+# $s2 - Last crab location
 # $s3 -
 # $s4 -
 # $s5 -
-# $s6 -
-# $s7 -
+# $s6 - 
+# $s7 - dead/alive flag: 0=alive, 1=dead
 # $t0 - temporary values
 
 ########## Initialize Game Values ##########
 main:	la   $s0, world
 	la   $s1, crab
+	li   $s7, 0
 	
 	# Setup data for Level 0
 	jal  gen_level_0
@@ -114,22 +116,37 @@ main:	la   $s0, world
 ########## Get Keyboard Input ##########
 
 main_loop:
-	lw   $a0, 0($s1)		# Store old crab location in $a0
-	
+	lw   $s2, 0($s1)		# Store old crab location in $s2	
 	li   $t0, KEYSTROKE
 	lw   $t0, 0($t0) 		# $t0 = 1 if key hit, 0 otherwise
 	bne  $t0, 1, update_display	# if no key was hit, branch to `update_display` 
 	jal  key_pressed		# Update position in `crab` struct
-	jal  unstamp_crab		# remove old crab from display
+	
+	
+	# If top of level was reached, build next level
+	# blt $position, $upper_limit, next_level
+	
+########## Construct Next Level ##########
 
+next_level:
+	# update level in `world`
+	# Run appropriate worldbuilding function
+	# then go on to update_display
+	
 ########## Update Display ##########
 
 update_display:
-	# jal  do_jumps		# Move crab up or down
-	# jal  unstamp_clam	# Remove all entities
+	jal  do_jumps		# Move crab up or down
+	
+	# Flicker prevention: only unstamp crab if it moved
+	lw   $t9, 0($s1)		# $t9 = crab.position
+	beq  $s2, $t9, update_display2	# if new pos == old pos, skip next line
+	jal  unstamp_crab		# remove old crab from display
+
+update_display2:
+	# Remove all moving entities
 	# jal  unstamp_piranha
 	# jal  unstamp_pufferfish
-	# jal  unstamp_seahorse
 	# jal  update_positions	# Update positions of all entities
 	jal  stamp_platforms	# Re-add platforms
 	jal  stamp_crab		# Add crab to display
@@ -189,8 +206,8 @@ key_a:	# MOVE LEFT
 	beq  $t5, 0, key_input_done	# if remainder is 0, do not move further left.
 	
 	# Update position stored in `crab`
-	addi $t2, $t2, -4	# $t2 = crab.position - 4
-	sw   $t2, 0($s1)	# crab.position = crab.position - 4
+	addi $t2, $t2, -HORIZ_DIST	# $t2 = crab.position - HORIZ_DIST
+	sw   $t2, 0($s1)		# crab.position = crab.position - HORIZ_DIST
 
 	bge  $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
 	j    key_toggle_check		# Toggle between walk states (state 1 and 0)
@@ -207,8 +224,8 @@ key_d:	# MOVE RIGHT
 	beq  $t5, $t4, key_input_done	# if remainder is WIDTH-4, do not move further right.
 
 	# Update position stored in `crab`
-	addi $t2, $t2, 4	# $t2 = crab.position + 4
-	sw   $t2, 0($s1)	# crab.position = crab.position + 4
+	addi $t2, $t2, HORIZ_DIST	# $t2 = crab.position + HORIZ_DIST
+	sw   $t2, 0($s1)		# crab.position = crab.position + HORIZ_DIST
 
 	bge  $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
 	j    key_toggle_check		# Toggle between walk states (state 1 and 0)
@@ -248,39 +265,130 @@ key_input_done:
 
 # do_jumps():
 #	moves the crab's stored position up or down, depending on its state
-#	$t2: crab.position, $t3 = crab.jump_timer
-do_jumps:
-
+#	$t0: outer index, $t1: inner index, $t2: crab.position, $t3 = crab.jump_timer, 
+#	$t4: temp, $t5: platform pos, $t6: platform length, $t7: *platforms
+do_jumps:	
 	# Get crab data
 	lw   $t2, 0($s1)	# $t2 = crab.position
 	lw   $t3, 8($s1)	# $t3 = crab.jump_timer
 	
 	# Check jump timer	
-	bgtz $t3, dj_up		# if jump_timer > 0, move up 2 and decrease jump_timer
-	blez $t3, dj_down	# if jump_timer <= 0, move down
+	bgtz $t3, dj_up		# if jump_timer > 0, move up that amount and decrease jump_timer
+	blez $t3, dj_down	# if jump_timer <= 0, move down that amount and decrease jump_timer
 	
 dj_up:	# Move crab up
-	addi $t2, $t2, -WIDTH	
-	addi $t2, $t2, -WIDTH	# $t2 = crab.position - 2*WIDTH
-	sw   $t2, 0($s1)	# crab.position = crab.position - 2*WIDTH
+	li   $t4, -WIDTH	
+	mul  $t4, $t4, $t3	# $t4 = -WIDTH * crab.jump_timer
+	add  $t2, $t2, $t4	# $t2 = new crab.position
+	sw   $t2, 0($s1)	# crab.position = new crab.position
 	
 	# Decrease timer on crab.jump_timer
 	addi $t3, $t3, -1	# $t3 = crab.jump_timer - 1
 	sw   $t3, 8($s1)	# crab.jump_timer = crab.jump_timer - 1
 	j dj_exit
 	
-dj_down: # Move crab down
-	addi $t2, $t2, WIDTH	# $t2 = crab.position + WIDTH
-	sw   $t2, 0($s1)	# crab.position = crab.position + WIDTH
+dj_down: # Must first determine if we are on/would fall through a platform
+	li   $t0, 0		# $t0 = i; outer loop index
+	la   $t7, platforms	# $t7 = *platforms
+	
+	addi $t4, $t2, WIDTH	# $t4 = pixel 1 row below crab pos
+	# # Get pixel that crab is expected to fall to next
+	# mul  $t4, $t3, WIDTH	# $t4 = jump_timer * WIDTH
+	# sub  $t4, $t2, $t4	# $t4 = crab.pos - crab.jump_timer * WIDTH
+	# addi $t4, $t2, WIDTH	# $t4 = jump_timer rows below crab pos
+	
+	dj_outer_loop: # Iterate over all platforms
+		beq  $t0, NUM_PLATFORMS, dj_no_platform
+	
+		# Get platform start point and length
+		lw  $t5, 0($t7)		# $t5 = platform[i] position
+		lw  $t6, 4($t7)		# $t6 = platform[i] length
+	
+		# Convert length to number of pixels
+		sll  $t6, $t6, 2	# $t6 = length*4
+		addi $t6, $t6, 1	# $t6 = length*4 + 1
+	
+		# Calculate end point of platform
+		sll  $t6, $t6, 2	# $t6 = (# pixels)*(sizeof int)
+		add  $t6, $t5, $t6	# $t6 = start_point + (# pixels)*(sizeof int)
+		
+		# Inner loop: check once for each row upwards
+		li   $t1, 0	# j = 0; inner loop index, counts down
+		dj_inner_loop: # Iterate over the next n=`crab.jump_timer` rows
+			blt  $t1, $t3, dj_outer_update	# if j < crab.jump_timer, break loop
+			
+			# Check if pixel address $t4 is between the start/end points of the platform
+			blt  $t4, $t5, dj_inner_update	# if $t4 < start point, branch to `dp_update`
+			bgt  $t4, $t6, dj_inner_update	# if $t4 > end point, branch to `dp_update`
+			j    dj_on_plat
+			
+		dj_inner_update: # Update indices and row we are looking at
+			addi $t1, $t1, -1	# j = j - 1
+			addi $t5, $t5, -WIDTH	# $t4 = one row higher
+			addi $t6, $t6, -WIDTH	# $t5 = one row higher
+			j    dj_inner_loop
+		
+	dj_outer_update: # Update index and pointer
+		addi $t0, $t0, 1	# i = i + 1
+		addi $t7, $t7, 8	# $t3 = *platforms[i+1]
+		j    dj_outer_loop
+	
+dj_no_platform:
+	beq  $t4, 1, dj_on_plat	# branch to `dj_on_plat` if crab is on a platform
+	
+	# Move crab down
+	li   $t4, -WIDTH	
+	mul  $t4, $t4, $t3	# $t4 = -WIDTH * crab.jump_timer
+	add  $t2, $t2, $t4	# $t2 = new crab.position
+	sw   $t2, 0($s1)	# crab.position = new crab.position
 
 	# Subtract from crab.jump_timer
 	addi $t3, $t3, -1	# $t3 = crab.jump_timer - 1
 	sw   $t3, 8($s1)	# crab.jump_timer = crab.jump_timer - 1
+	j dj_exit
 	
-	# if crab is on a platform, do not move it down and change state to walk_0
-
+dj_on_plat: # if crab is above a platform, move it down just to the platform:
+	# Move crab down j pixels
+	li   $t4, -WIDTH	
+	mul  $t4, $t4, $t1	# $t4 = -WIDTH * j
+	add  $t2, $t2, $t4	# $t2 = new crab.position
+	sw   $t2, 0($s1)	# crab.position = new crab.position
+	
+	# Set jump_timer to 0
+	li   $t3, 0		# $t3 = 0
+	sw   $t3, 8($s1)	# crab.jump_timer = 0 
+	
+	# Set crab.state to 0 IFF it was already set to 2 (jumping)
+	lw   $t4, 4($s1)	# $t4 = crab.state
+	bne  $t4, 2, dj_exit
+	sw   $t3, 4($s1)	# crab.state = 0
+		
 dj_exit:	
-	jr $ra	
+	jr   $ra	
+# ---------------------------------------------------------------------------------------
+
+
+# update_positions():
+#	Updates the stored position value in all entity structs
+#	$t0: entity pointer, $t1: entity state, $t2: entity position
+update_positions:
+
+	# Update puffer
+	la   $t0, pufferfish	# $t0 = *puffer
+	lw   $t1, 0($t0)	# $t1 = puffer.state
+	lw   $t2, 4($t0)	# $t2 = puffer.pos
+	
+	# Update piranha1
+	la   $t0, piranha1	# $t0 = *piranha1
+	lw   $t1, 0($t0)	# $t1 = piranha1.state
+	lw   $t2, 4($t0)	# $t2 = piranha1.pos
+	
+	# Update piranha2
+	la   $t0, piranha2	# $t0 = *piranha2
+	lw   $t1, 0($t0)	# $t1 = piranha2.state
+	lw   $t2, 4($t0)	# $t2 = piranha2.pos
+	
+	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
@@ -1634,8 +1742,14 @@ gbc_exit:
 # ---------------------------------------------------------------------------------------
 
 
-# unstamp_crab($a0 = position):
-# 	Removes the crab from the display at $a0
+# unstamp_platforms()
+unstamp_platforms:
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_crab():
+# 	Removes the crab from the display at the position in $s2
 #	$a0: crab_position, $t1: bg_color, $t3: in _get_bg_color
 unstamp_crab:
 	# Push return address onto stack
@@ -1650,7 +1764,7 @@ unstamp_crab:
 	lw   $ra, 0($sp)	# $ra = old return address
 	addi $sp, $sp, 4
 	
-	move $t0, $a0
+	move $t0, $s2
 	# Color the pixels appropriately
 	sw   $t1, -16($t0)
 	sw   $t1, -12($t0)
@@ -1745,4 +1859,379 @@ unstamp_crab:
 
 	# Return to caller			
 	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_clam()
+unstamp_clam:
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_piranha()
+unstamp_piranha:
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_pufferfish($a0 = *pixel):
+# 	Removes pufferfish from the display at $a0
+#	$a0: puffer_position, $t1: bg_color, $t3: in _get_bg_color
+unstamp_pufferfish:
+	# Push return address onto stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Obtain background color
+	jal  _get_bg_color
+	move $t1, $v0		# $t1 = sea colour
+	
+	# Pop old return address from stack
+	lw   $ra, 0($sp)	# $ra = old return address
+	addi $sp, $sp, 4
+	
+	# Color the pixels appropriately
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t1, 36($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t1, 36($t0)
+	sw $t1, 40($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -36($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -40($t0)
+	sw $t1, -36($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t1, 36($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 40($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, 0($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 0($t0)
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	sw $t1, -52($t0)
+	sw $t1, -48($t0)
+	sw $t1, -44($t0)
+	sw $t1, -40($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t1, 40($t0)
+	sw $t1, 44($t0)
+	sw $t1, 48($t0)
+	sw $t1, 52($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -48($t0)
+	sw $t1, -44($t0)
+	sw $t1, -40($t0)
+	sw $t1, -36($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t1, 36($t0)
+	sw $t1, 40($t0)
+	sw $t1, 44($t0)
+	sw $t1, 48($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -48($t0)
+	sw $t1, -44($t0)
+	sw $t1, -40($t0)
+	sw $t1, -36($t0)
+	sw $t1, -32($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 32($t0)
+	sw $t1, 36($t0)
+	sw $t1, 40($t0)
+	sw $t1, 44($t0)
+	sw $t1, 48($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -44($t0)
+	sw $t1, -40($t0)
+	sw $t1, -36($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 36($t0)
+	sw $t1, 40($t0)
+	sw $t1, 44($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -44($t0)
+	sw $t1, -40($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 40($t0)
+	sw $t1, 44($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -44($t0)
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	sw $t1, 44($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -32($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 32($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	addi $t0, $t0, WIDTH
+	sw $t1, -16($t0)
+	sw $t1, 16($t0)
+	
+	# Return to caller
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_seahorse()
+unstamp_seahorse:
+	jr   $ra
 # ---------------------------------------------------------------------------------------
