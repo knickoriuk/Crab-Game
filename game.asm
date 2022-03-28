@@ -178,7 +178,7 @@ exit:	li   $v0, 10
 # key_pressed():
 #	Determines and updates new states and positions for the crab,
 #	given the current key that is pressed.
-#	$t2: crab_pos, $t3: crab_state, $t9: key_input
+#	$t2: crab_pos, $t3: crab_state, $t6: distance, $t7: modulo comparison, $t9: key_input
 key_pressed:
 	li   $t9, KEYSTROKE  	# $t9 
 	lw   $t9, 4($t9) 	# $t9 = last key hit 
@@ -197,42 +197,76 @@ key_pressed:
 	beq  $t9, 0x70, key_p  	# If $t9 == 'p', branch to `key_p`
 	j    key_input_done	# Otherwise, treat like no key pressed
 
-key_a:	# MOVE LEFT
-
-	# First need to check if it is at the left wall
+key_a:	##### MOVE LEFT #####
+	li   $t6, HORIZ_DIST	# $t6 = HORIZ_DIST
+	
+	bne  $t3, 2, key_a_walk
+key_a_jump: 	# If crab is jumping, move left twice as far
+	sll  $t6, $t6, 1	# $t6 = HORIZ_DIST * 2
+	addi $t7, $t6, -4	# $t7 = HORIZ_DIST*2 - 4
+	j    key_a_checkwall
+	
+key_a_walk:	# Otherwise, crab is walking
+	addi $t7, $t6, -4	# $t7 = HORIZ_DIST - 4
+	
+key_a_checkwall: # Check if it is at the left wall
 	addi $t4, $t2, -32	# $t4 = position of left-most edge of crab
 	sub  $t4, $t4, $gp	# $t4 = left-most pixel - $gp
 	li   $t5, WIDTH		# $t5 = WIDTH (probably 256)
 	div  $t4, $t5		# hi = $t4 % $t5
 	mfhi $t5
-	beq  $t5, 0, key_input_done	# if remainder is 0, do not move further left.
+	ble  $t5, $t7, key_a_noroom	# if remainder is <= $t7, it cannot move that far
 	
 	# Update position stored in `crab`
-	addi $t2, $t2, -HORIZ_DIST	# $t2 = crab.position - HORIZ_DIST
-	sw   $t2, 0($s1)		# crab.position = crab.position - HORIZ_DIST
+	sub $t2, $t2, $t6		# $t2 = crab.position - distance travelled
+	sw   $t2, 0($s1)		# crab.position = crab.position - distance travelled
 
-	bge  $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
-	j    key_toggle_check		# Toggle between walk states (state 1 and 0)
+	bne  $t3, 2, key_toggle_check	# If not currently jumping (state 2), toggle walk state
+	j    key_input_done
+	
+key_a_noroom: # If there's not room to move that much space, reduce distance by 4 and retry
+	beq  $t6, 0, key_input_done	# Break if distance == 0
+	addi $t6, $t6, -4	# decrease distance moved by 4
+	addi $t7, $t7, -4	# decrease modulo comparison by 4
+	j    key_a_checkwall
 
-key_d:	# MOVE RIGHT		
-
-	# First need to check if it is at the right wall
+key_d:	##### MOVE RIGHT #####
+	li   $t6, HORIZ_DIST	# $t6 = HORIZ_DIST
+	li   $t7, WIDTH		# $t7 = WIDTH
+	
+	bne  $t3, 2, key_d_walk
+key_d_jump: 	# If crab is jumping, move right twice as far
+	sll  $t6, $t6, 1	# $t6 = HORIZ_DIST * 2
+	sub  $t7, $t7, $t6	# $t7 = WIDTH - HORIZ_DIST*2
+	j    key_d_checkwall
+	
+key_d_walk:	# Otherwise, crab is walking
+	sub  $t7, $t7, $t6	# $t7 = WIDTH - HORIZ_DIST
+	
+key_d_checkwall: # Check if it is at the right wall
 	addi $t4, $t2, 28	# $t4 = position of right-most edge of crab
 	sub  $t4, $t4, $gp	# $t4 = right-most pixel - $gp
-	li   $t5, WIDTH		# $t5 = WIDTH
+	li   $t5, WIDTH		# $t5 = WIDTH (probably 256)
 	div  $t4, $t5		# hi = $t4 % $t5
-	addi $t4, $t5, -4	# $t4 = WIDTH - 4
+	addi $t4, $t5, -8	# $t4 = WIDTH - 8
 	mfhi $t5		# $t5 = modulo(position, WIDTH)
-	beq  $t5, $t4, key_input_done	# if remainder is WIDTH-4, do not move further right.
-
+	bge  $t5, $t7, key_d_noroom	# if remainder is >= $t7, it cannot move that far
+	
 	# Update position stored in `crab`
-	addi $t2, $t2, HORIZ_DIST	# $t2 = crab.position + HORIZ_DIST
-	sw   $t2, 0($s1)		# crab.position = crab.position + HORIZ_DIST
+	add  $t2, $t2, $t6		# $t2 = crab.position + distance travelled
+	sw   $t2, 0($s1)		# crab.position = crab.position + distance travelled
 
-	bge  $t3, 2, key_input_done	# If currently jumping (state 2), don't toggle walk state
-	j    key_toggle_check		# Toggle between walk states (state 1 and 0)
+	bne  $t3, 2, key_toggle_check	# If not currently jumping (state 2), toggle walk state
+	j    key_input_done
+	
+key_d_noroom: # If there's not room to move that much space, reduce distance by 4 and retry
+	beq  $t6, 0, key_input_done	# Break if distance == 0
+	addi $t6, $t6, -4	# decrease distance moved by 4
+	addi $t7, $t7, -4	# decrease modulo comparison by 4
+	j    key_d_checkwall
 
-key_w:	# JUMP
+
+key_w:	##### JUMP #####
 
 	# Check if crab is already jumping
 	beq  $t3, 2, key_input_done
@@ -244,11 +278,12 @@ key_w:	# JUMP
 	sw   $t3, 8($s1)	# crab.jump_timer = CRAB_UP_DIST
 	j    key_input_done
 	
-key_p:	# RESET
+key_p:	##### RESET #####
 	# TODO: some kind of display/notification
 	j    main
 	
-key_toggle_check: # If state==0, toggle walk state from 0 -> 1
+key_toggle_check: # If walking, toggle walk states from 0 <-> 1
+	beq  $t2, $s2, key_input_done # If position hasn't changed, don't toggle.
 	beq  $t3, 0, key_toggle_1	
 	
 	# Toggle crab.state from 1 to 0
@@ -294,10 +329,6 @@ dj_down: # Must first determine if we are on/would fall through a platform
 	la   $t7, platforms	# $t7 = *platforms
 	
 	addi $t4, $t2, WIDTH	# $t4 = pixel 1 row below crab pos
-	# # Get pixel that crab is expected to fall to next
-	# mul  $t4, $t3, WIDTH	# $t4 = jump_timer * WIDTH
-	# sub  $t4, $t2, $t4	# $t4 = crab.pos - crab.jump_timer * WIDTH
-	# addi $t4, $t2, WIDTH	# $t4 = jump_timer rows below crab pos
 	
 	dj_outer_loop: # Iterate over all platforms
 		beq  $t0, NUM_PLATFORMS, dj_no_platform
@@ -332,7 +363,7 @@ dj_down: # Must first determine if we are on/would fall through a platform
 		
 	dj_outer_update: # Update index and pointer
 		addi $t0, $t0, 1	# i = i + 1
-		addi $t7, $t7, 8	# $t3 = *platforms[i+1]
+		addi $t7, $t7, 8	# $t7 = *platforms[i+1]
 		j    dj_outer_loop
 	
 dj_no_platform:
@@ -347,6 +378,10 @@ dj_no_platform:
 	# Subtract from crab.jump_timer
 	addi $t3, $t3, -1	# $t3 = crab.jump_timer - 1
 	sw   $t3, 8($s1)	# crab.jump_timer = crab.jump_timer - 1
+	
+	# Set crab.state to `jumping` (2)
+	li   $t4, 2		# $t4 = 2
+	sw   $t4, 4($s1)	# crab.state = 2
 	j dj_exit
 	
 dj_on_plat: # if crab is above a platform, move it down just to the platform:
@@ -431,8 +466,8 @@ gen_level_0:
 	
 	# clam data
 	la   $t1, clam
-	li   $t0, 1
-	sw   $t0, 0($t1)	# clam.state = 1 (open)
+	li   $t0, 0
+	sw   $t0, 0($t1)	# clam.state = 0
 	li   $t0, 14888
 	add  $t0, $t0, $gp
 	sw   $t0, 4($t1)	# clam.pos = addr($gp) + INIT_POS
@@ -450,8 +485,8 @@ gen_level_0:
 	li   $t0, 25600
 	add  $t0, $t0, $gp
 	sw   $t0, 0($t1)	# platform_1.pos = 25600 + $gp
-	li   $t0, 4
-	sw   $t0, 4($t1)	# platform_1.len = 4
+	li   $t0, 7
+	sw   $t0, 4($t1)	# platform_1.len = 7
 	li   $t0, 21676
 	add  $t0, $t0, $gp
 	sw   $t0, 8($t1)	# platform_2.pos = 21676 + $gp
@@ -462,11 +497,11 @@ gen_level_0:
 	sw   $t0, 16($t1)	# platform_3.pos = 15104 + $gp
 	li   $t0, 10
 	sw   $t0, 20($t1)	# platform_3.len = 10
-	li   $t0, 7936
+	li   $t0, 7976
 	add  $t0, $t0, $gp
-	sw   $t0, 24($t1)	# platform_4.pos = 7936 + $gp
-	li   $t0, 3
-	sw   $t0, 28($t1)	# platform_4.len = 3
+	sw   $t0, 24($t1)	# platform_4.pos = 7976 + $gp
+	li   $t0, 4
+	sw   $t0, 28($t1)	# platform_4.len = 4
 	li   $t0, 4000
 	add  $t0, $t0, $gp
 	sw   $t0, 32($t1)	# platform_5.pos = 4000 + $gp
@@ -1034,8 +1069,8 @@ sc_exit:
 
 # stamp_piranha():
 # 	"Stamps" the piranhas onto the display
-#	TODO: Display the second piranha. It only displays the first, for now.
-#	$t0: pixel_address, $t1-$t4: colors, $t5: piranha, $t6: world.darkness, $t7: temp
+#	$t0: pixel_address, $t1-$t4: colors, $t5: piranha, 
+#	$t6: world.darkness, $t7: temp, $t8: loop index
 stamp_piranha:
 	li $t1, 0x00312e73	# $t1 = base color
 	li $t2, 0x00661a1f	# $t2 = belly color
@@ -1052,16 +1087,18 @@ stamp_piranha:
 	sub $t2, $t2, $t7
 	sub $t3, $t3, $t7
 	
+	# Loop twice: stamp each piranha
+	li   $t8, 0		# $t8 = 0; loop index
+	la $t5, piranha1	# $t5 = *piranha1
+sp_loop:
+	beq  $t8, 2, sp_exit	# if $t8 == 2, return
+
 	# Determine if piranha is visible, and if it faces left or right 
-	la $t5, piranha1
 	lw $t7 0($t5)		# $t7 = piranha.state
-	beq $t7, 0, sp_exit	# if piranha.state == 0, branch to `sp_exit`
+	beq $t7, 0, sp_update	# if piranha.state == 0, it's invisible - skip it
 	lw $t0, 4($t5)		# $t0 = piranha.position
 	beq $t7, 1, sp_left	# if piranha.state == 1, branch to `sp_left`
 				# else, facing right
-				
-				# idea, at end, la $t7 piranha2, then loop back to after la $t7 piranha1,
-				# add a branch if $t7 == piranha1, see if this works
 			
 	# Stamp a right-facing piranha
 	addi $t0, $t0, -WIDTH
@@ -1171,7 +1208,7 @@ stamp_piranha:
 	sw $t1, 0($t0)
 	sw $t1, 4($t0)
 	sw $t1, 8($t0)
-	j sp_exit
+	j sp_update
 				
 sp_left: # Stamp a left-facing piranha
 	addi $t0, $t0, -WIDTH
@@ -1282,35 +1319,41 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -4($t0)
 	sw $t1, -8($t0)
 	
+sp_update:
+	# Update pointer and index
+	addi $t8, $t8, 1	# $t8 = i + 1
+	addi $t5, $t5, 8	# $t5 = *piranha[i+1]
+	j    sp_loop
+	
 sp_exit:
 	jr $ra
 # ---------------------------------------------------------------------------------------
 
 
-# stamp_pufferfish(*pixel):
-# 	"Stamps" a pufferfish onto the display given it is positioned at *pixel
-#	$t0: pixel_address, $t1-$t5: colors, $t6: world.darkness, $t7: temp
+# stamp_pufferfish():
+# 	"Stamps" a pufferfish onto the display
+#	$t0: pixel_address, $t1-$t5: colors, $t5: *pufferfish, $t6: world.darkness, $t7: temp
 stamp_pufferfish:
-	li $t1, 0x00a8c267	# $t1 = base color
-	li $t2, 0x00929644	# $t2 = fin/spikes color
-	li $t3, 0x00ffffff	# $t3 = belly color
-	li $t4, 0x00d1d1d1	# $t4 = belly spikes color
-	li $t5, 0x00000000	# $t5 = black
+	li   $t1, 0x00a8c267	# $t1 = base color
+	li   $t2, 0x00929644	# $t2 = fin/spikes color
+	li   $t3, 0x00ffffff	# $t3 = belly color
+	li   $t4, 0x00d1d1d1	# $t4 = belly spikes color
+	li   $t5, 0x00000000	# $t5 = black
 	
 	# Determine darkening factor
-	lw $t6, 4($s0)		# $t6 = world.darkness
-	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	lw   $t6, 4($s0)	# $t6 = world.darkness
+	li   $t7, DARKNESS	# 
+	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
 	
 	# Darken colors based on darkening factor
-	sub $t1, $t1, $t7
-	sub $t2, $t2, $t7
-	sub $t3, $t3, $t7
-	sub $t4, $t4, $t7
+	sub  $t1, $t1, $t7
+	sub  $t2, $t2, $t7
+	sub  $t3, $t3, $t7
+	sub  $t4, $t4, $t7
 	
-	# Pop pixel address from stack
-	lw $t0, 0($sp)		# $t0 = address of pixel
-	addi, $sp, $sp, 4	# reclaim space on stack
+	# Get pixel address of pufferfish
+	la   $t5, pufferfish
+	lw   $t0, 0($t5)	# $t0 = address of pixel
 	
 	# Color the pixels appropriately
 	sw $t1, -32($t0)
@@ -1653,26 +1696,26 @@ stamp_pufferfish:
 # ---------------------------------------------------------------------------------------
 	
 	
-# stamp_seahorse(*pixel):
-# 	"Stamps" a seahorse onto the display given it is positioned at *pixel
-#	$t0: pixel_address, $t1-$t3: colors, $t6: world.darkness, $t7: temp
+# stamp_seahorse():
+# 	"Stamps" a seahorse onto the display
+#	$t0: pixel_address, $t1-$t3: colors, $t5: *seahorse, $t6: world.darkness, $t7: temp
 stamp_seahorse:
-	li $t1, 0x00ff9815	# $t1 = seahorse colour
-	li $t2, 0x00ffeb3b	# $t2 = fin colour
-	li $t3, 0x00000000	# $t3 = black
+	li   $t1, 0x00ff9815	# $t1 = seahorse colour
+	li   $t2, 0x00ffeb3b	# $t2 = fin colour
+	li   $t3, 0x00000000	# $t3 = black
 	
 	# Determine darkening factor
-	lw $t6, 4($s0)		# $t6 = world.darkness
-	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	lw   $t6, 4($s0)	# $t6 = world.darkness
+	li   $t7, DARKNESS	# 
+	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
 	
 	# Darken colors based on darkening factor
-	sub $t1, $t1, $t7
-	sub $t2, $t2, $t7
+	sub  $t1, $t1, $t7
+	sub  $t2, $t2, $t7
 
-	# Pop pixel address from stack
-	lw $t0, 0($sp)		# $t0 = address of pixel
-	addi, $sp, $sp, 4	# reclaim space on stack
+	# Get pixel address
+	la   $t5, seahorse
+	lw   $t0, 0($t5)	# $t0 = address of pixel
 	
 	# Color the pixels appropriately
 	sw $t1, 0($t0)
