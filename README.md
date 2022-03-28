@@ -56,6 +56,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 
 ### Initialize Level Functions:
  - `gen_level_0()`
+ - `gen_next_level()`
 
 ### Painting Functions:
  - `generate_background()`
@@ -79,9 +80,9 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ## To do:
  - [x] ~~Ensure all `stamp_` functions have switched to using global struct data~~
  - [ ] Complete `unstamp_` functions
- - [ ] Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level
+ - [x] ~~Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level~~
  - [ ] Implement `update_positions()` to move pufferfish and piranha positions
- - [ ] Make Level 1 (`gen_level_1()`)
+ - [x] ~~Make Level 1 (`gen_level_1()`)~~
  - [ ] Falling off screen leads to game over
  - [ ] Detect if touching other entities
 
