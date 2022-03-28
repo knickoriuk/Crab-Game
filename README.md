@@ -64,8 +64,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_crab()`
  - `stamp_clam()`
  - `stamp_piranha()`
- - `stamp_pufferfish(*pixel)`
- - `stamp_seahorse(*pixel)`
+ - `stamp_pufferfish()`
+ - `stamp_seahorse()`
 
 ### Un-Painting Functions:
  - `_get_bg_color()`
@@ -77,7 +77,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `unstamp_seahorse()`
 
 ## To do:
- - [ ] Ensure all `stamp_` functions have switched to register-based calling convention
+ - [x] ~~Ensure all `stamp_` functions have switched to using global struct data~~
  - [ ] Complete `unstamp_` functions
  - [ ] Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level
  - [ ] Implement `update_positions()` to move pufferfish and piranha positions
@@ -91,3 +91,4 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - Get points from pearls, maybe sand dollars?
  - Seahorse grants temporary immunity
  - Collision detection: can make square hitboxes, iterate over the pixels in the hitbox range to see if one of four points of the crab passed through it (upper left, upper right, lower left, lower right)
+ - Bubbles that you can double bounce on, but pop and come back after X display refreshes
