@@ -85,6 +85,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Make Level 1 (`gen_level_1()`)~~
  - [ ] Falling off screen leads to game over
  - [ ] Detect if touching other entities
+ - [ ] Make Level 2
 
 ## Ideas: 
  - Pufferfish float up and down, through platforms
