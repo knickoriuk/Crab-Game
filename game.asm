@@ -48,7 +48,7 @@
 .eqv	NUM_PLATFORMS	6		# Maximum number of platforms
 .eqv	CRAB_UP_DIST	7		# Duration of crab jump ascension
 .eqv	HORIZ_DIST	8		# Distance moved left/right per screen refresh
-.eqv	UPPER_LIMIT	4000		# TODO: Height that, if surpassed, moves to next level 
+.eqv	UPPER_LIMIT	0x10009000	# Height that, if surpassed, moves to next level 
 
 .data
 frame_buffer: 	.space		32768
@@ -118,22 +118,35 @@ main:	la   $s0, world
 ########## Get Keyboard Input ##########
 
 main_loop:
-	lw   $s2, 0($s1)		# Store old crab location in $s2	
+	lw   $s2, 0($s1)		# Store old crab location in $s2
+	
+	# If top of level was reached, build next level
+	lw   $t0, 0($s1)			# $t0 = new crab.position
+	bgt  $t0, UPPER_LIMIT, get_keystroke	# If height not yet reached
+	lw   $t0, 4($s1)			# $t0 = crab.state
+	bge  $t0, 2, get_keystroke		# If crab is not yet on land
+	j    next_level
+
+get_keystroke:		
 	li   $t0, KEYSTROKE
 	lw   $t0, 0($t0) 		# $t0 = 1 if key hit, 0 otherwise
 	bne  $t0, 1, update_display	# if no key was hit, branch to `update_display` 
 	jal  key_pressed		# Update position in `crab` struct
-	
-	
-	# If top of level was reached, build next level
-	# blt $position, $upper_limit, next_level
+	j    update_display
 	
 ########## Construct Next Level ##########
 
-next_level:
-	# update level in `world`
-	# Run appropriate worldbuilding function
-	# then go on to update_display
+next_level: # Update `world` struct:
+	lw   $t0, 0($s0)	# $t0 = world.level
+	addi $t0, $t0, 1	# $t0 = world.level + 1
+	sw   $t0, 0($s0)	# world.level = world.level + 1
+	
+	# Setup data for next level
+	jal  gen_next_level
+	
+	# Display new level
+	jal  generate_background
+	jal  stamp_platforms
 	
 ########## Update Display ##########
 
@@ -150,7 +163,7 @@ update_display2:
 	# jal  unstamp_piranha
 	# jal  unstamp_pufferfish
 	# jal  update_positions	# Update positions of all entities
-	jal  stamp_platforms	# Re-add platforms
+	jal  stamp_platforms	# Re-add platforms, in case they were un-stamped
 	jal  stamp_crab		# Add crab to display
 	jal  stamp_piranha	# Add all entities
 	jal  stamp_clam
@@ -433,6 +446,7 @@ update_positions:
 #	INITIALIZE LEVEL FUNCTIONS					#
 #########################################################################
 
+
 # gen_level_0():
 # 	Sets up level 0 details in global structs
 gen_level_0:
@@ -448,72 +462,140 @@ gen_level_0:
 	add  $t0, $t0, $gp
 	sw   $t0, 0($s1)	# crab.pos = addr($gp) + INIT_POS
 	li   $t0, 0
-	sw   $t0, 4($s1)	# crab.state = 0 (walk state 0)
+	sw   $t0, 4($s1)	# crab.state = walk_0
 	sw   $t0, 8($s1)	# crab.jump_timer = 0
 	
 	# piranha data
 	la   $t1, piranha1	# $t1 = piranha1
 	li   $t0, 0
-	sw   $t0, 0($t1)	# piranha1.state = 0
+	sw   $t0, 0($t1)	# piranha1.state = invisible
 	la   $t1, piranha2	# $t1 = piranha2
 	li   $t0, 0
-	sw   $t0, 0($t1)	# piranha2.state = 0
+	sw   $t0, 0($t1)	# piranha2.state = invisible
 	
 	# pufferfish data
 	la   $t1, pufferfish
 	li   $t0, 0
-	sw   $t0, 0($t1)	# pufferfish.visible = 0
+	sw   $t0, 0($t1)	# pufferfish.visible = invisible
 	
 	# clam data
 	la   $t1, clam
 	li   $t0, 0
-	sw   $t0, 0($t1)	# clam.state = 0
-	li   $t0, 14888
-	add  $t0, $t0, $gp
-	sw   $t0, 4($t1)	# clam.pos = addr($gp) + INIT_POS
-	#la   $t1, clam
-	#li   $t0, 0
-	#sw   $t0, 0($t1)	# clam.state = 0 (invisible)
+	sw   $t0, 0($t1)	# clam.state = invisible
 	
 	# seahorse data
 	la   $t1, seahorse
 	li   $t0, 0
-	sw   $t0, 0($t1)	# seahorse.state = 0
+	sw   $t0, 0($t1)	# seahorse.state = invisible
 	
 	# Platforms
 	la   $t1, platforms
-	li   $t0, 25600
+	li   $t0, 25600 # = platform_1.pos
 	add  $t0, $t0, $gp
-	sw   $t0, 0($t1)	# platform_1.pos = 25600 + $gp
-	li   $t0, 7
-	sw   $t0, 4($t1)	# platform_1.len = 7
-	li   $t0, 21676
+	sw   $t0, 0($t1)
+	li   $t0, 7 # = platform_1.len
+	sw   $t0, 4($t1)
+	li   $t0, 21676 # = platform_2.pos
 	add  $t0, $t0, $gp
-	sw   $t0, 8($t1)	# platform_2.pos = 21676 + $gp
-	li   $t0, 5
-	sw   $t0, 12($t1)	# platform_2.len = 5
-	li   $t0, 15104
+	sw   $t0, 8($t1)
+	li   $t0, 5 # = platform_2.len
+	sw   $t0, 12($t1)
+	li   $t0, 15104 # = platform_3.pos
 	add  $t0, $t0, $gp
-	sw   $t0, 16($t1)	# platform_3.pos = 15104 + $gp
-	li   $t0, 10
-	sw   $t0, 20($t1)	# platform_3.len = 10
-	li   $t0, 7976
+	sw   $t0, 16($t1)
+	li   $t0, 10 # = platform_3.len
+	sw   $t0, 20($t1)	
+	li   $t0, 7976 # = platform_4.pos
 	add  $t0, $t0, $gp
-	sw   $t0, 24($t1)	# platform_4.pos = 7976 + $gp
-	li   $t0, 4
-	sw   $t0, 28($t1)	# platform_4.len = 4
-	li   $t0, 4000
+	sw   $t0, 24($t1)	
+	li   $t0, 4 # = platform_4.len
+	sw   $t0, 28($t1)	
+	li   $t0, 3196 # = platform_5.pos
 	add  $t0, $t0, $gp
-	sw   $t0, 32($t1)	# platform_5.pos = 4000 + $gp
-	li   $t0, 4
-	sw   $t0, 36($t1)	# platform_5.len = 4
-	li   $t0, 31744
+	sw   $t0, 32($t1)	
+	li   $t0, 6 # = platform_5.len
+	sw   $t0, 36($t1)	
+	li   $t0, 31744 # = platform_6.pos
 	add  $t0, $t0, $gp
-	sw   $t0, 40($t1)	# platform_6.pos = 31744 + $gp
-	li   $t0, 16
-	sw   $t0, 44($t1)	# platform_6.len = 16
+	sw   $t0, 40($t1)
+	li   $t0, 16 # = platform_6.len
+	sw   $t0, 44($t1)
 	
 	# Return to caller
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+#  gen_next_level():
+#	Sets up the structs according to the level specified in world.level
+gen_next_level:
+	lw   $t0, 0($s0)	# $t0 = world.level
+	# Branch to correct level setup:
+	beq  $t0, 1, gen_level_1
+	beq  $t0, 2, gen_level_1
+	beq  $t0, 3, gen_level_1
+	beq  $t0, 4, gen_level_1
+	beq  $t0, 5, gen_level_1
+	beq  $t0, 6, gen_level_1
+	# TODO: Deal with the last level differently
+
+gen_level_1: ##### LEVEL ONE #####
+	# world data
+	li   $t0, 3
+	sw   $t0, 4($s0)	# world.darkness = 3
+
+	# crab data
+	lw   $t0, 0($s1)
+	add  $t0, $t0, 28672	# Move crab down to bottom of display
+	sw   $t0, 0($s1)
+		
+	# clam data
+	la   $t1, clam
+	li   $t0, 1 # = clam.state = open
+	sw   $t0, 0($t1)
+	li   $t0, 15152 # = clam.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 4($t1)
+
+	# Platforms
+	la   $t1, platforms
+	li   $t0, 3676 # = platform_1.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 0($t1)
+	li   $t0, 6 # = platform_1.len
+	sw   $t0, 4($t1)
+	li   $t0, 10956 # = platform_2.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 8($t1)
+	li   $t0, 3 # = platform_2.len
+	sw   $t0, 12($t1)
+	li   $t0, 15360 # = platform_3.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 16($t1)
+	li   $t0, 6 # = platform_3.len
+	sw   $t0, 20($t1)	
+	li   $t0, 18124 # = platform_4.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 24($t1)	
+	li   $t0, 3 # = platform_4.len
+	sw   $t0, 28($t1)	
+	li   $t0, 25020 # = platform_5.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 32($t1)	
+	li   $t0, 3 # = platform_5.len
+	sw   $t0, 36($t1)
+	li   $t0, 31868 # = platform_6.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 40($t1)	
+	li   $t0, 6 # = platform_6.len
+	sw   $t0, 44($t1)	
+
+	jr   $ra
+	
+gen_level_2: ##### LEVEL TWO #####
+	jr   $ra
+	
+gen_level_3: ##### LEVEL THREE #####
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
