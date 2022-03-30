@@ -11,10 +11,13 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `KEYSTROKE`: address where key inputs is stored
  - `SEA_COL_0` through `SEA_COL_4`: background colours
  - `DARKNESS`: amount to darken sprites by, multiplied by world.darkness
+ - `NUM_STARS`: maximum number of sea stars
  - `NUM_PLATFORMS`: maximum number of platforms
  - `CRAB_UP_DIST`: height of crab jumps
  - `HORIZ_DIST`: distance moved left/right 
  - `UPPER_LIMIT`: height to pass to get to next level
+ - `POP_TIME`: number of screen refreshes before a popped bubble dissipates
+ - `BUBBLE_REGEN`: number of screen refreshes before a bubble regenerates
 
 ### Global Variables:
  - `frame_buffer`: additional space for display (confirm this is needed?)
@@ -38,6 +41,15 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `seahorse`:
    - +0: State - {0=invisible, 1=visible}
    - +4: Position - Address of pixel
+ - `bubble1` and `bubble2`:
+   - +0: State - {0=invisible, 1=visible, X=time it was popped}
+   - +4: Position - Address of pixel
+ - `stars`:
+   - +0: Star1 State - {0=invisible, 1=visible}
+   - +4: Star1 Position
+   - +8: Star2 State - {0=invisible, 1=visible}
+   - +12: Star2 Position
+   - etc.
  - `platforms`:
    - +0: Platform1 Position
    - +4: Platform1 Length
@@ -67,6 +79,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_piranha()`
  - `stamp_pufferfish()`
  - `stamp_seahorse()`
+ - `stamp_bubble()`
 
 ### Un-Painting Functions:
  - `_get_bg_color()`
@@ -76,6 +89,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `unstamp_piranha()`
  - `unstamp_pufferfish($a0=*position)`
  - `unstamp_seahorse()`
+ - `unstamp_bubble()`
 
 ## To do:
  - [x] ~~Ensure all `stamp_` functions have switched to using global struct data~~
@@ -94,7 +108,6 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ## Ideas: 
  - Pufferfish float up and down, through platforms
  - Piranha paces left and right along platforms
- - Get points from pearls, maybe sand dollars?
- - Seahorse grants temporary immunity
+ - Get points from pearls, sea stars, and sea horses
  - Collision detection: can make square hitboxes, iterate over the pixels in the hitbox range to see if one of four points of the crab passed through it (upper left, upper right, lower left, lower right)
  - Bubbles that you can double bounce on, but pop and come back after X display refreshes
