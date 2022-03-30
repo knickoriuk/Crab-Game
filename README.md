@@ -86,6 +86,10 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [ ] Falling off screen leads to game over
  - [ ] Detect if touching other entities
  - [ ] Make Level 2
+ - [ ] Fail condition / Game over screen
+ - [ ] Win condition / Win screen
+ - [ ] Bubble sprite + popped sprite(?)
+ - [ ] Implement temporary bubble platforms
 
 ## Ideas: 
  - Pufferfish float up and down, through platforms
