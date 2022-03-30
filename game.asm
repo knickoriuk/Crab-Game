@@ -19,10 +19,14 @@
 # 
 # Which approved features have been implemented for milestone 3? 
 # (See the assignment handout for the list of additional features) 
-# 1. (fill in the feature, if any) 
-# 2. (fill in the feature, if any) 
-# 3. (fill in the feature, if any) 
-# ... (add more if necessary) 
+# 1. Moving Objects (Piranhas, pufferfish) 
+# 2. Disappearing Platforms (Bubbles)
+# 3. Different Levels
+# 4. Fail Condition
+# 5. Win Condition
+# 6. Score
+# 7. Animated Sprites (Crab, Clam, Bubble)
+# 8. (Bonus) Varying light levels, sprites get brighter as you progress upwards
 # 
 # Link to video demonstration for final submission: 
 # - (insert YouTube / MyMedia / other URL here). Make sure we can view it! 
@@ -45,10 +49,13 @@
 .eqv	SEA_COL_1	0x00125dcc	#	:
 .eqv	SEA_COL_0	0x001467db	# Sea colour, lightest
 .eqv	DARKNESS	0x00050505	# amount to darken colours by, per level
+.eqv	NUM_STARS	8		# Maximum number of sea stars		
 .eqv	NUM_PLATFORMS	6		# Maximum number of platforms
 .eqv	CRAB_UP_DIST	7		# Duration of crab jump ascension
 .eqv	HORIZ_DIST	8		# Distance moved left/right per screen refresh
 .eqv	UPPER_LIMIT	0x10009000	# Height that, if surpassed, moves to next level 
+.eqv	POP_TIME	10		# Number of screen refreshes before a popped bubble dissipates
+.eqv	BUBBLE_REGEN	100		# Number of screen refreshes before bubble regenerates
 
 .data
 frame_buffer: 	.space		32768
@@ -85,6 +92,14 @@ seahorse:	.space		8
 #	int state;	# 0 if invisible, 1 if visible
 #	int position;	# Pixel address of position of seahorse
 # }
+bubble1:	.space		8
+bubble2:	.space		8
+# struct bubbleX {
+#	int state;	# 0 if invisible/disabled, 1 if visible, X if popped (set X to time of pop)
+#	int position;	# Pixel address of position of bubble
+# }
+stars:		.double		NUM_STARS	# Stores pairs of (state, position) for stars
+						# States: 0 if invisible, 1 if visible
 platforms:	.double		NUM_PLATFORMS	# Stores pairs of (position, length) for platforms
 						# length==0 implies the platform does not exist
 
@@ -98,13 +113,14 @@ platforms:	.double		NUM_PLATFORMS	# Stores pairs of (position, length) for platf
 # $s3 -
 # $s4 -
 # $s5 -
-# $s6 - 
+# $s6 - timer: number of screen refreshes since level start
 # $s7 - dead/alive flag: 0=alive, 1=dead
 # $t0 - temporary values
 
 ########## Initialize Game Values ##########
 main:	la   $s0, world
 	la   $s1, crab
+	li   $s6, 0
 	li   $s7, 0
 	
 	# Setup data for Level 0
@@ -143,6 +159,7 @@ next_level: # Update `world` struct:
 	
 	# Setup data for next level
 	jal  gen_next_level
+	li   $s6, 0		# Reset timer to 0
 	
 	# Display new level
 	jal  generate_background
@@ -172,6 +189,7 @@ update_display2:
 	
 ########## Sleep and Repeat ##########
 
+	addi $s6, $s6, 1	# add 1 to timer
 	# Sleep for `SLEEP_DUR` milliseconds
 	li   $a0, SLEEP_DUR
 	li   $v0, 32
@@ -488,6 +506,14 @@ gen_level_0:
 	li   $t0, 0
 	sw   $t0, 0($t1)	# seahorse.state = invisible
 	
+	# bubble data
+	la   $t1, bubble1
+	li   $t0, 0
+	sw   $t0, 0($t1)	# bubble1.state = invisible
+	la   $t1, bubble2
+	li   $t0, 0
+	sw   $t0, 0($t1)	# bubble2.state = invisible
+	
 	# Platforms
 	la   $t1, platforms
 	li   $t0, 25600 # = platform_1.pos
@@ -530,14 +556,15 @@ gen_level_0:
 #	Sets up the structs according to the level specified in world.level
 gen_next_level:
 	lw   $t0, 0($s0)	# $t0 = world.level
+
 	# Branch to correct level setup:
 	beq  $t0, 1, gen_level_1
-	beq  $t0, 2, gen_level_1
-	beq  $t0, 3, gen_level_1
-	beq  $t0, 4, gen_level_1
-	beq  $t0, 5, gen_level_1
-	beq  $t0, 6, gen_level_1
-	# TODO: Deal with the last level differently
+	beq  $t0, 2, gen_level_2
+	beq  $t0, 3, gen_level_3
+	beq  $t0, 4, gen_level_4
+	beq  $t0, 5, gen_level_5
+	beq  $t0, 6, gen_level_6
+	# TODO: WIN CONDITION: Deal with the last level differently
 
 gen_level_1: ##### LEVEL ONE #####
 	# world data
@@ -572,7 +599,7 @@ gen_level_1: ##### LEVEL ONE #####
 	li   $t0, 15360 # = platform_3.pos
 	add  $t0, $t0, $gp
 	sw   $t0, 16($t1)
-	li   $t0, 6 # = platform_3.len
+	li   $t0, 7 # = platform_3.len
 	sw   $t0, 20($t1)	
 	li   $t0, 18124 # = platform_4.pos
 	add  $t0, $t0, $gp
@@ -1834,6 +1861,63 @@ stamp_seahorse:
 	
 	# Return to caller			
 	jr $ra
+# ---------------------------------------------------------------------------------------
+
+
+# stamp_bubble():
+#	"Stamps" the bubbles onto the display at the position in bubble.position
+#	Uses "popped" sprite for POP_TIME time counts after the time in bubble.state
+#	After BUBBLE_REGEN time since the time in bubble.state, it resets to whole bubble
+#	$t0: pixel_address, $t1: color, $t5: bubble, $t6: world.darkness, $t7: temp, $t8: loop index
+stamp_bubble:
+	li   $t1, 0x00ffffff	# $t1 = white
+	
+	# Determine darkening factor
+	lw   $t6, 4($s0)		# $t6 = world.darkness
+	li   $t7, DARKNESS	# 
+	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	
+	# Darken colors based on darkening factor
+	sub  $t1, $t1, $t7
+	
+	# Loop twice: stamp each bubble
+	li   $t8, 0		# $t8 = 0; loop index
+	la   $t5, bubble1	# $t5 = *bubble1
+sb_loop:
+	beq  $t8, 2, sb_exit	# if $t8 == 2, return
+
+	# Determine if bubble is visible, its position, and the sprite to use
+	lw   $t7 0($t5)		# $t7 = bubble.state
+	beq  $t7, 0, sb_update	# if bubble.state == 0, it's invisible - skip it
+	lw   $t0, 4($t5)	# $t0 = bubble.position
+	beq  $t7, 1, sb_bubble	# if bubble.state == 1, stamp intact bubble
+				# Else, bubble has been popped. But how long ago?
+	# Current time = $s6,  Time of pop = $t7
+	addi $t7, $t7, POP_TIME
+	ble  $s6, $t7, sb_popped # If current time <= bubble's time of death + POP_TIME, draw popped 
+	addi $t7, $t7, BUBBLE_REGEN
+	ble  $s6, $t7, sb_update # If current_time <= bubble's time of dissipation + BUBBLE_REGEN, don't stamp it.
+				 # else, bubble has regenerated
+	li   $t7, 1
+	sw   $t7, 0($t5)	# Set bubble.state = 1
+	# TODO: It might be better to set the state somewhere else. update_entities() perhaps...?
+	# Then we can instead just check "If current time <= bubble's time of death + POP_TIME", and not draw otherwise
+				
+sb_bubble:
+	# Stamp an intact bubble
+	j    sb_update
+	
+sb_popped:
+	# Stamp a popped bubble
+
+sb_update:
+	# Update pointer and index
+	addi $t8, $t8, 1	# $t8 = i + 1
+	addi $t5, $t5, 8	# $t5 = *bubble[i+1]
+	j    sb_loop
+	
+sb_exit:
+	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 #########################################################################
