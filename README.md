@@ -80,30 +80,32 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_pufferfish()`
  - `stamp_seahorse()`
  - `stamp_bubble()`
+ - `stamp_stars()`
 
 ### Un-Painting Functions:
  - `_get_bg_color()`
- - `unstamp_platforms()`
  - `unstamp_crab()`
- - `unstamp_clam()`
- - `unstamp_piranha()`
+ - `unstamp_clam($a0=*position)`
+ - `unstamp_piranha($a0=*position)`
  - `unstamp_pufferfish($a0=*position)`
- - `unstamp_seahorse()`
- - `unstamp_bubble()`
+ - `unstamp_seahorse($a0=*position)`
+ - `unstamp_bubble($a0=*position)`
+ - `unstamp_star($a0=*position)`
 
 ## To do:
  - [x] ~~Ensure all `stamp_` functions have switched to using global struct data~~
- - [ ] Complete `unstamp_` functions
+ - [x] ~~Complete `unstamp_` functions~~
  - [x] ~~Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level~~
- - [ ] Implement `update_positions()` to move pufferfish and piranha positions
  - [x] ~~Make Level 1 (`gen_level_1()`)~~
- - [ ] Falling off screen leads to game over
+ - [x] ~~Bubble sprite + popped sprite(?)~~
+ - [ ] Implement `update_positions()` to move pufferfish and piranha positions
  - [ ] Detect if touching other entities
- - [ ] Make Level 2
- - [ ] Fail condition / Game over screen
- - [ ] Win condition / Win screen
- - [ ] Bubble sprite + popped sprite(?)
  - [ ] Implement temporary bubble platforms
+ - [ ] Falling off screen leads to game over
+ - [ ] Fail condition / Game over screen
+ - [ ] Add dead crab sprite
+ - [ ] Make Level 2
+ - [ ] Win condition / Win screen
 
 ## Ideas: 
  - Pufferfish float up and down, through platforms
@@ -111,3 +113,4 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - Get points from pearls, sea stars, and sea horses
  - Collision detection: can make square hitboxes, iterate over the pixels in the hitbox range to see if one of four points of the crab passed through it (upper left, upper right, lower left, lower right)
  - Bubbles that you can double bounce on, but pop and come back after X display refreshes
+ - Can make background color a global variable ($s register) if there is one free, to save on calling `_get_bg_color()` so often
