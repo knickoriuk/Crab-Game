@@ -19,7 +19,7 @@
 # 
 # Which approved features have been implemented for milestone 3? 
 # (See the assignment handout for the list of additional features) 
-# 1. Moving Objects (Piranhas, pufferfish) 
+# 1. Moving Objects (Piranhas, Pufferfish) 
 # 2. Disappearing Platforms (Bubbles)
 # 3. Different Levels
 # 4. Fail Condition
@@ -69,18 +69,19 @@ world:		.space		12
 # struct world {
 #	int level:	# 0,1,2,3,4,5,6... However many I end up making
 #	int darkness:	# 4, 3, 2, 1, 0
-#	int score;	# Holds score (?)
+#	int score;	# Holds score
 # }
 clam:		.space		8
 # struct clam {
 #	int state;	# 0 if invisible, 1 if open, 2 if closed
 #	int position;	# Pixel address of position of clam
 # }
-piranha1:	.space		8
-piranha2:	.space		8
+piranha1:	.space		12
+piranha2:	.space		12
 # struct piranhaX {
 #	int state;	# 0 if invisible, 1 if left-facing, 2 if right-facing
 #	int position;	# Pixel address of position of piranha
+#	int platform;	# Memory offset from `platforms` that has the platform the piranha is on
 # }
 pufferfish:	.space		8
 # struct pufferfish {
@@ -98,10 +99,10 @@ bubble2:	.space		8
 #	int state;	# 0 if invisible/disabled, 1 if visible, X if popped (set X to time of pop)
 #	int position;	# Pixel address of position of bubble
 # }
-stars:		.double		NUM_STARS	# Stores pairs of (state, position) for stars
-						# States: 0 if invisible, 1 if visible
-platforms:	.double		NUM_PLATFORMS	# Stores pairs of (position, length) for platforms
-						# length==0 implies the platform does not exist
+stars:		.space		64	# Stores pairs of (state, position) for stars
+					# States: 0 if invisible, 1 if visible
+platforms:	.space		48	# Stores pairs of (position, length) for platforms
+					# length==0 implies the platform does not exist
 
 .text
 .globl main
@@ -181,6 +182,7 @@ update_display2:
 	# jal  unstamp_pufferfish
 	# jal  update_positions	# Update positions of all entities
 	jal  stamp_platforms	# Re-add platforms, in case they were un-stamped
+	jal  stamp_stars	# Add stars to display
 	jal  stamp_crab		# Add crab to display
 	jal  stamp_piranha	# Add all entities
 	jal  stamp_clam
@@ -547,6 +549,34 @@ gen_level_0:
 	li   $t0, 16 # = platform_6.len
 	sw   $t0, 44($t1)
 	
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 1 # = star_1.state = visible
+	sw   $t0, 0($t1)
+	li   $t0, 24408 # = star_1.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
+	sw   $t0, 8($t1)
+	li   $t0, 21108 # = star_2.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
+	sw   $t0, 16($t1)
+	li   $t0, 19872 # = star_3.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 20($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	# Return to caller
 	jr   $ra
 # ---------------------------------------------------------------------------------------
@@ -559,11 +589,11 @@ gen_next_level:
 
 	# Branch to correct level setup:
 	beq  $t0, 1, gen_level_1
-	beq  $t0, 2, gen_level_2
-	beq  $t0, 3, gen_level_3
-	beq  $t0, 4, gen_level_4
-	beq  $t0, 5, gen_level_5
-	beq  $t0, 6, gen_level_6
+	beq  $t0, 2, gen_level_1
+	beq  $t0, 3, gen_level_1
+	beq  $t0, 4, gen_level_1
+	beq  $t0, 5, gen_level_1
+	beq  $t0, 6, gen_level_1
 	# TODO: WIN CONDITION: Deal with the last level differently
 
 gen_level_1: ##### LEVEL ONE #####
@@ -601,10 +631,10 @@ gen_level_1: ##### LEVEL ONE #####
 	sw   $t0, 16($t1)
 	li   $t0, 7 # = platform_3.len
 	sw   $t0, 20($t1)	
-	li   $t0, 18124 # = platform_4.pos
+	li   $t0, 18108 # = platform_4.pos
 	add  $t0, $t0, $gp
 	sw   $t0, 24($t1)	
-	li   $t0, 3 # = platform_4.len
+	li   $t0, 4 # = platform_4.len
 	sw   $t0, 28($t1)	
 	li   $t0, 25020 # = platform_5.pos
 	add  $t0, $t0, $gp
@@ -616,6 +646,24 @@ gen_level_1: ##### LEVEL ONE #####
 	sw   $t0, 40($t1)	
 	li   $t0, 6 # = platform_6.len
 	sw   $t0, 44($t1)	
+	
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 1 # = star_1.state = visible
+	sw   $t0, 0($t1)
+	li   $t0, 24532 # = star_1.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
+	sw   $t0, 8($t1)
+	li   $t0, 17636 # = star_2.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
+	sw   $t0, 16($t1)
+	li   $t0, 10468 # = star_3.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 20($t1)
 
 	jr   $ra
 	
@@ -1905,10 +1953,123 @@ sb_loop:
 				
 sb_bubble:
 	# Stamp an intact bubble
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -20($t0)
+	sw   $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -20($t0)
+	sw   $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
 	j    sb_update
 	
 sb_popped:
 	# Stamp a popped bubble
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	sw   $t1, 0($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -20($t0)
+	sw   $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -12($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -36($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 35($t0)
+	addi $t0, $t0, -WIDTH
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 32($t0)
+	sw   $t1, 40($t0)
+	addi $t0, $t0, -WIDTH
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -36($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, 0($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 8($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -12($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 8($t0)
 
 sb_update:
 	# Update pointer and index
@@ -1919,6 +2080,63 @@ sb_update:
 sb_exit:
 	jr   $ra
 # ---------------------------------------------------------------------------------------
+
+
+# stamp_stars():
+# 	"Stamps" all the sea stars onto the display, given what is stored in `stars`
+#	$t0: pixel_address, $t1: color, $t4: stars struct
+#	$t6: world.darkness, $t7: temp, $t8: index
+stamp_stars:
+	li   $t1, 0x00ffeb3b	# $t1 = star colour
+	
+	# Determine darkening factor
+	lw   $t6, 4($s0)	# $t6 = world.darkness
+	li   $t7, DARKNESS	# 
+	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	
+	# Darken colors based on darkening factor
+	sub  $t1, $t1, $t7
+
+	li   $t8, 0		# i = 0
+	la   $t4, stars		# $t4 = addr(stars)
+	
+ss_loop: # while i <= NUM_STARS :
+	beq  $t8, NUM_STARS, ss_exit	# if i==NUM_PLATFORMS, branch to `ss_exit`
+	
+	# Get values for this star
+	sll  $t7, $t8, 3	# $t7 = 8 * i
+	add  $t7, $t4, $t7	# $t7 = addr(stars) + 8*i
+	lw   $t0, 4($t7)	# $t0 = star.position
+	lw   $t7, 0($t7)	# $t7 = star.state
+	
+	beqz $t7, ss_update	# if star.state == 0, it is invisible; skip it
+
+	# Stamp a sea star on the display
+	sw   $t1, -4($t0)
+	sw   $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 0($t0)
+
+ss_update:
+	# Update index
+	addi $t8, $t8, 1	# i = i + 1
+	j ss_loop		# Restart loop
+
+ss_exit:
+	# Return to caller			
+	jr $ra
+# ---------------------------------------------------------------------------------------
+
 
 #########################################################################
 #	UN-PAINTING FUNCTIONS						#
@@ -1953,15 +2171,9 @@ gbc_exit:
 # ---------------------------------------------------------------------------------------
 
 
-# unstamp_platforms()
-unstamp_platforms:
-	jr   $ra
-# ---------------------------------------------------------------------------------------
-
-
 # unstamp_crab():
 # 	Removes the crab from the display at the position in $s2
-#	$a0: crab_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: crab_position, $t1: bg_color, $t3: in _get_bg_color
 unstamp_crab:
 	# Push return address onto stack
 	addi $sp, $sp, -4
@@ -2074,20 +2286,312 @@ unstamp_crab:
 
 
 # unstamp_clam()
+# 	Removes the clam from the display at the position in $s2
+#	$t0: clam_position, $t1: bg_color, $t3: in _get_bg_color
 unstamp_clam:
+	# Push return address onto stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Obtain background color
+	jal  _get_bg_color
+	move $t1, $v0		# $t1 = sea colour
+	
+	# Pop old return address from stack
+	lw   $ra, 0($sp)	# $ra = old return address
+	addi $sp, $sp, 4
+	
+	move $t0, $a0
+
+	# Color pixels appropriately
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	
+	# Return to caller
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
-# unstamp_piranha()
+# unstamp_piranha($a0 = *position)
+# 	Removes piranha from the display at $a0
+#	$t0: piranha_position, $t1: bg_color, $t3: in _get_bg_color
 unstamp_piranha:
+	# Push return address onto stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Obtain background color
+	jal  _get_bg_color
+	move $t1, $v0		# $t1 = sea colour
+	
+	# Pop old return address from stack
+	lw   $ra, 0($sp)	# $ra = old return address
+	addi $sp, $sp, 4
+	
+	move $t0, $a0
+	
+	# Color the pixels appropriately
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 4($t0)	
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -24($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 24($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -28($t0)
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	sw $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+				
+	# Return to caller
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
 
 # unstamp_pufferfish($a0 = *pixel):
 # 	Removes pufferfish from the display at $a0
-#	$a0: puffer_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: puffer_position, $t1: bg_color, $t3: in _get_bg_color
 unstamp_pufferfish:
 	# Push return address onto stack
 	addi $sp, $sp, -4
@@ -2100,6 +2604,8 @@ unstamp_pufferfish:
 	# Pop old return address from stack
 	lw   $ra, 0($sp)	# $ra = old return address
 	addi $sp, $sp, 4
+	
+	move $t0, $a0
 	
 	# Color the pixels appropriately
 	sw $t1, -32($t0)
@@ -2442,7 +2948,210 @@ unstamp_pufferfish:
 # ---------------------------------------------------------------------------------------
 
 
-# unstamp_seahorse()
+# unstamp_seahorse($a0=*position)
+# 	Removes seahorse from the display at $a0
+#	$t0: seahorse_position, $t1: bg_color, $t3: in _get_bg_color
 unstamp_seahorse:
+	# Push return address onto stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Obtain background color
+	jal  _get_bg_color
+	move $t1, $v0		# $t1 = sea colour
+	
+	# Pop old return address from stack
+	lw   $ra, 0($sp)	# $ra = old return address
+	addi $sp, $sp, 4
+	
+	move $t0, $a0
+	
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, 0($t0)
+	
+	# Return to caller
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_bubble($a0=*position)
+# 	Removes bubble from the display at $a0
+#	$t0: bubble_position, $t1: bg_color, $t3: in _get_bg_color
+unstamp_bubble:
+	# Push return address onto stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Obtain background color
+	jal  _get_bg_color
+	move $t1, $v0		# $t1 = sea colour
+	
+	# Pop old return address from stack
+	lw   $ra, 0($sp)	# $ra = old return address
+	addi $sp, $sp, 4
+	
+	move $t0, $a0
+	
+	# Stamp a popped bubble
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	sw   $t1, 0($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -20($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 16($t0) 
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -36($t0)
+	sw   $t1, -28($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 28($t0)
+	sw   $t1, 35($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, -28($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	sw   $t1, 40($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -32($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -36($t0)
+	sw   $t1, -32($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, 28($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 28($t0)
+	sw   $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 8($t0)
+	
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# unstamp_star($a0=*position)
+# 	Removes star from the display at $a0
+#	$t0: star_position, $t1: bg_color, $t3: in _get_bg_color
+unstamp_star:
+	# Push return address onto stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Obtain background color
+	jal  _get_bg_color
+	move $t1, $v0		# $t1 = sea colour
+	
+	# Pop old return address from stack
+	lw   $ra, 0($sp)	# $ra = old return address
+	addi $sp, $sp, 4
+	
+	move $t0, $a0
+
+	# Remove a sea star from the display
+	sw   $t1, -4($t0)
+	sw   $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, 0($t0)
+	
 	jr   $ra
 # ---------------------------------------------------------------------------------------
