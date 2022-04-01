@@ -55,7 +55,7 @@
 .eqv	HORIZ_DIST	8		# Distance moved left/right per screen refresh
 .eqv	UPPER_LIMIT	0x10009000	# Height that, if surpassed, moves to next level 
 .eqv	POP_TIME	10		# Number of screen refreshes before a popped bubble dissipates
-.eqv	BUBBLE_REGEN	100		# Number of screen refreshes before bubble regenerates
+.eqv	BUBBLE_REGEN	100		# Number of screen refreshes before bubble regenerates. BUBBLE_REGEN > POP_TIME
 
 .data
 frame_buffer: 	.space		32768
@@ -76,8 +76,8 @@ clam:		.space		8
 #	int state;	# 0 if invisible, 1 if open, 2 if closed
 #	int position;	# Pixel address of position of clam
 # }
-piranha1:	.space		12
-piranha2:	.space		12
+piranha1:	.space		8
+piranha2:	.space		8
 # struct piranhaX {
 #	int state;	# 0 if invisible, 1 if left-facing, 2 if right-facing
 #	int position;	# Pixel address of position of piranha
@@ -99,10 +99,12 @@ bubble2:	.space		8
 #	int state;	# 0 if invisible/disabled, 1 if visible, X if popped (set X to time of pop)
 #	int position;	# Pixel address of position of bubble
 # }
-stars:		.space		64	# Stores pairs of (state, position) for stars
+stars:		.space		64	# Stores pairs of (state, position) for sea stars
 					# States: 0 if invisible, 1 if visible
+					# Set = to NUM_STARS * 8
 platforms:	.space		48	# Stores pairs of (position, length) for platforms
 					# length==0 implies the platform does not exist
+					# Set = to NUM_PLATFORMS * 8
 
 .text
 .globl main
@@ -113,7 +115,7 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 # $s2 - Last crab location
 # $s3 -
 # $s4 -
-# $s5 -
+# $s5 - background colour
 # $s6 - timer: number of screen refreshes since level start
 # $s7 - dead/alive flag: 0=alive, 1=dead
 # $t0 - temporary values
@@ -121,6 +123,7 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 ########## Initialize Game Values ##########
 main:	la   $s0, world
 	la   $s1, crab
+	li   $s5, SEA_COL_4
 	li   $s6, 0
 	li   $s7, 0
 	
@@ -177,17 +180,18 @@ update_display:
 	jal  unstamp_crab		# remove old crab from display
 
 update_display2:
-	# Remove all moving entities
-	# jal  unstamp_piranha
-	# jal  unstamp_pufferfish
-	# jal  update_positions	# Update positions of all entities
-	jal  stamp_platforms	# Re-add platforms, in case they were un-stamped
-	jal  stamp_stars	# Add stars to display
-	jal  stamp_crab		# Add crab to display
-	jal  stamp_piranha	# Add all entities
+	# Entities, if they move, are removed from display in update_positions()
+	jal  update_positions	# Update positions of all entities
+	jal  stamp_platforms
+	jal  stamp_bubble
+	jal  stamp_stars
 	jal  stamp_clam
-	# jal  stamp_seahorse
-	# jal  stamp_pufferfish
+	jal  stamp_seahorse
+	jal  stamp_crab	
+	jal  stamp_piranha
+	jal  stamp_pufferfish
+	
+	jal  detect_collisions
 	
 ########## Sleep and Repeat ##########
 
@@ -440,24 +444,195 @@ dj_exit:
 
 # update_positions():
 #	Updates the stored position value in all entity structs
-#	$t0: entity pointer, $t1: entity state, $t2: entity position
+#	Will also unstamp any entities that have moved
+#	$t0: entity pointer, $t1: entity state, $t2: entity position, $t7: temp, $t8: temp2
 update_positions:
+	# Store $ra
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
 
 	# Update puffer
 	la   $t0, pufferfish	# $t0 = *puffer
 	lw   $t1, 0($t0)	# $t1 = puffer.state
 	lw   $t2, 4($t0)	# $t2 = puffer.pos
 	
-	# Update piranha1
+	beq  $t1, 0 update_piranha1	# if puffer.state == 0, is invisible; skip it
+	beq  $t1, 1, move_puff_up	# If puffer.state == 1, move it up
+					# Otherwise, move it down
+	# Move Puffer Down
+	move $a0, $t2		# Store old position in $a0
+	addi $t2, $t2, WIDTH
+	sw   $t2, 4($t0)	# puffer.pos = 1 pixel below old puffer.pos
+	jal  unstamp_pufferfish	# Remove puffer from display
+	la   $t0, pufferfish	# Re-obtain puffer position after function call
+	lw   $t2, 4($t0)	# $t2 = new position
+	addi $t7, $gp, 32512	# If new pos is at bottom of display, change its direction
+	blt  $t2, $t7, update_piranha1
+	li   $t7, 1
+	sw   $t7, 0($t0) # Change state to 1 (ascending)
+	j    update_piranha1
+	
+move_puff_up: # Move Puffer Up
+	move $a0, $t2		# Store old position in $a0
+	addi $t2, $t2, -WIDTH
+	sw   $t2, 4($t0)	# puffer.pos = 1 pixel above old puffer.pos
+	jal  unstamp_pufferfish	# Remove puffer from display
+	la   $t0, pufferfish	# Re-obtain puffer position after function call
+	lw   $t2, 4($t0)	# $t2 = new position
+	addi $t7, $gp, 256	# If new pos is at top of display, change its direction
+	bgt  $t2, $t7, update_piranha1
+	li   $t7, 2
+	sw   $t7, 0($t0) # Change state to 2 (descending)
+
+update_piranha1: # Update piranha1
 	la   $t0, piranha1	# $t0 = *piranha1
 	lw   $t1, 0($t0)	# $t1 = piranha1.state
 	lw   $t2, 4($t0)	# $t2 = piranha1.pos
 	
-	# Update piranha2
+	beq  $t1, 0 update_piranha2	# if piranha.state == 0, is invisible; skip it
+	beq  $t1, 1, move_piran1_left	# If piranha.state == 1, move it left
+					# Otherwise, move it right
+					
+	# Move Piranha1 Right
+	move $a0, $t2		# Store old position in $a0
+	addi $t2, $t2, 4
+	sw   $t2, 4($t0)	# piranha1.pos = 1 pixel right of old piranh1.pos
+	jal  unstamp_piranha	# Remove piranha from display 
+	la   $t0, piranha1	# Re-obtain piranha1 position after function call
+	lw   $t2, 4($t0)	# $t2 = new position
+	
+	# If new pos is at right of display, change its direction
+	addi $t7, $t2, 28	# $t7 = right-most pixel of piranha
+	sub  $t7, $t7, $gp	# $t7 = right-most pixel as an offset from $gp
+	li   $t8, WIDTH		# $t8 = number of bytes in 1 row of pixels
+	div  $t7, $t8		# hi = $t7 % $t8
+	addi $t7, $t8, -4	# $t7 = WIDTH - 4
+	mfhi $t8		# $t8 = modulo(position, WIDTH)
+	blt  $t8, $t7, update_piranha2 # if remainder is < WIDTH-4, don't change its direction
+	li   $t7, 1
+	sw   $t7, 0($t0) # Change state to 1 (left-facing)
+	j    update_piranha2
+	
+move_piran1_left: # Move Piranha1 Left
+	move $a0, $t2		# Store old position in $a0
+	addi $t2, $t2, -4
+	sw   $t2, 4($t0)	# piranha1.pos = 1 pixel left of old piranh1.pos
+	jal  unstamp_piranha	# Remove piranha from display 
+	la   $t0, piranha1	# Re-obtain piranha1 position after function call
+	lw   $t2, 4($t0)	# $t2 = new position
+	
+	# If new pos is at right of display, change its direction
+	addi $t7, $t2, -28	# $t7 = left-most pixel of piranha
+	sub  $t7, $t7, $gp	# $t7 = left-most pixel as an offset from $gp
+	li   $t8, WIDTH		# $t8 = number of bytes in 1 row of pixels
+	div  $t7, $t8		# hi = $t7 % $t8
+	mfhi $t8		# $t8 = modulo(position, WIDTH)
+	bgtz  $t8, update_piranha2 # if remainder is > 0, don't change its direction
+	li   $t7, 2
+	sw   $t7, 0($t0) # Change state to 2 (right-facing)
+	
+update_piranha2: # Update piranha2
 	la   $t0, piranha2	# $t0 = *piranha2
 	lw   $t1, 0($t0)	# $t1 = piranha2.state
 	lw   $t2, 4($t0)	# $t2 = piranha2.pos
 	
+	beq  $t1, 0 update_bubble1	# if piranha.state == 0, is invisible; skip it
+	beq  $t1, 1, move_piran2_left	# If piranha.state == 1, move it left
+					# Otherwise, move it right
+					
+	# Move Piranha2 Right
+	move $a0, $t2		# Store old position in $a0
+	addi $t2, $t2, 4
+	sw   $t2, 4($t0)	# piranha2.pos = 1 pixel right of old piranha.pos
+	jal  unstamp_piranha	# Remove piranha from display 
+	la   $t0, piranha2	# Re-obtain piranha2 position after function call
+	lw   $t2, 4($t0)	# $t2 = new position
+	
+	# If new pos is at right of display, change its direction
+	addi $t7, $t2, 28	# $t7 = right-most pixel of piranha
+	sub  $t7, $t7, $gp	# $t7 = right-most pixel as an offset from $gp
+	li   $t8, WIDTH		# $t8 = number of bytes in 1 row of pixels
+	div  $t7, $t8		# hi = $t7 % $t8
+	addi $t7, $t8, -4	# $t7 = WIDTH - 4
+	mfhi $t8		# $t8 = modulo(position, WIDTH)
+	blt  $t8, $t7, update_bubble1 # if remainder is < WIDTH-4, don't change its direction
+	li   $t7, 1
+	sw   $t7, 0($t0) # Change state to 1 (left-facing)
+	j    update_bubble1
+	
+move_piran2_left: # Move Piranha1 Left
+	move $a0, $t2		# Store old position in $a0
+	addi $t2, $t2, -4
+	sw   $t2, 4($t0)	# piranha2.pos = 1 pixel left of old piranha.pos
+	jal  unstamp_piranha	# Remove piranha from display 
+	la   $t0, piranha2	# Re-obtain piranha2 position after function call
+	lw   $t2, 4($t0)	# $t2 = new position
+	
+	# If new pos is at right of display, change its direction
+	addi $t7, $t2, -28	# $t7 = left-most pixel of piranha
+	sub  $t7, $t7, $gp	# $t7 = left-most pixel as an offset from $gp
+	li   $t8, WIDTH		# $t8 = number of bytes in 1 row of pixels
+	div  $t7, $t8		# hi = $t7 % $t8
+	mfhi $t8		# $t8 = modulo(position, WIDTH)
+	bgtz  $t8, update_bubble1 # if remainder is > 0, don't change its direction
+	li   $t7, 2
+	sw   $t7, 0($t0) # Change state to 2 (right-facing)
+
+update_bubble1:	# Update State of Bubble1
+	la   $t0, bubble1	# $t0 = *bubble1
+	lw   $t1, 0($t0)	# $t1 = bubble1.state
+	
+	ble  $t1, 1, update_bubble2 # If state <= 1, skip it
+	
+	addi $t1, $t1, POP_TIME
+	blt  $s6, $t1, update_bubble2 # if current time < time of dissipation, dont do anything
+				      # otherwise, unstamp bubble and check state
+
+	lw   $a0, 4($t0)	# $a0 = bubble1.pos
+	jal  unstamp_bubble
+	
+	la   $t0, bubble1	# $t0 = *bubble1
+	lw   $t1, 0($t0)	# $t1 = bubble1.state
+	addi $t1, $t1, BUBBLE_REGEN
+	blt  $s6, $t1, update_bubble2   # if current time < time of regen, don't reset state
+					# Otherwise, reset state to 1 (intact)
+	li   $t1, 1
+	sw   $t1, 0($t0)	# bubble1.state = 1
+
+update_bubble2: # Update State of Bubble2
+	la   $t0, bubble2	# $t0 = *bubble2
+	lw   $t1, 0($t0)	# $t1 = bubble2.state
+	
+	ble  $t1, 1, update_done # If state <= 1, skip it
+	
+	addi $t1, $t1, POP_TIME
+	blt  $s6, $t1, update_done # if current time < time of dissipation, dont do anything
+				      # otherwise, unstamp bubble and check state
+
+	lw   $a0, 4($t0)	# $a0 = bubble2.pos
+	jal  unstamp_bubble
+	
+	la   $t0, bubble2	# $t0 = *bubble2
+	lw   $t1, 0($t0)	# $t1 = bubble2.state
+	addi $t1, $t1, BUBBLE_REGEN
+	blt  $s6, $t1, update_done   # if current time < time of regen, don't reset state
+					# Otherwise, reset state to 1 (intact)
+	li   $t1, 1
+	sw   $t1, 0($t0)	# bubble2.state = 1
+
+update_done:
+	# Restore $ra
+	lw   $ra, 0($sp)
+	addi $sp, $sp, 4
+	
+	# Return to caller
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# detect_collisions():
+#	Detects if the crab is touching any entities, based on positions stored in data structs
+detect_collisions:
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
@@ -478,8 +653,7 @@ gen_level_0:
 	sw   $t0, 4($s0)	# world.darkness = 4
 
 	# crab data
-	li   $t0, INIT_POS
-	add  $t0, $t0, $gp
+	addi $t0, $gp, INIT_POS
 	sw   $t0, 0($s1)	# crab.pos = addr($gp) + INIT_POS
 	li   $t0, 0
 	sw   $t0, 4($s1)	# crab.state = walk_0
@@ -518,33 +692,27 @@ gen_level_0:
 	
 	# Platforms
 	la   $t1, platforms
-	li   $t0, 25600 # = platform_1.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 25600 # = platform_1.pos
 	sw   $t0, 0($t1)
 	li   $t0, 7 # = platform_1.len
 	sw   $t0, 4($t1)
-	li   $t0, 21676 # = platform_2.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 21676 # = platform_2.pos
 	sw   $t0, 8($t1)
 	li   $t0, 5 # = platform_2.len
 	sw   $t0, 12($t1)
-	li   $t0, 15104 # = platform_3.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 15104 # = platform_3.pos
 	sw   $t0, 16($t1)
 	li   $t0, 10 # = platform_3.len
 	sw   $t0, 20($t1)	
-	li   $t0, 7976 # = platform_4.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 7976 # = platform_4.pos
 	sw   $t0, 24($t1)	
 	li   $t0, 4 # = platform_4.len
 	sw   $t0, 28($t1)	
-	li   $t0, 3196 # = platform_5.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 3196 # = platform_5.pos
 	sw   $t0, 32($t1)	
 	li   $t0, 6 # = platform_5.len
 	sw   $t0, 36($t1)	
-	li   $t0, 31744 # = platform_6.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 31744 # = platform_6.pos
 	sw   $t0, 40($t1)
 	li   $t0, 16 # = platform_6.len
 	sw   $t0, 44($t1)
@@ -553,18 +721,15 @@ gen_level_0:
 	la   $t1, stars
 	li   $t0, 1 # = star_1.state = visible
 	sw   $t0, 0($t1)
-	li   $t0, 24408 # = star_1.pos
-	add  $t0, $t0, $gp
+	add  $t0, $gp, 24408 # = star_1.pos
 	sw   $t0, 4($t1)
 	li   $t0, 1 # = star_2.state = visible
 	sw   $t0, 8($t1)
-	li   $t0, 21108 # = star_2.pos
-	add  $t0, $t0, $gp
+	add  $t0, $gp, 21108 # = star_2.pos
 	sw   $t0, 12($t1)
 	li   $t0, 1 # = star_3.state = visible
 	sw   $t0, 16($t1)
-	li   $t0, 19872 # = star_3.pos
-	add  $t0, $t0, $gp
+	add  $t0, $gp, 19872 # = star_3.pos
 	sw   $t0, 20($t1)
 	li   $t0, 0 # = star_4.state = invisible
 	sw   $t0, 24($t1)
@@ -600,6 +765,7 @@ gen_level_1: ##### LEVEL ONE #####
 	# world data
 	li   $t0, 3
 	sw   $t0, 4($s0)	# world.darkness = 3
+	li   $s5, SEA_COL_3	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -681,20 +847,8 @@ gen_level_3: ##### LEVEL THREE #####
 
 # generate_background():
 #	Fills the display with a background colour
-# 	$t0: index, $t1: max_index, $t2: pixel_address, $t3: in _get_bg_color, $t9: bg_color
-generate_background:	
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color based on level in `world` struct
-	jal  _get_bg_color
-	move $t9, $v0		# get result from $v0
-	
-	# Pop result and old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
+# 	$t0: index, $t1: max_index, $t2: pixel_address
+generate_background:		
 	# Set up indices of iteration
 	li   $t0, 0		# $t0 = i
 	li   $t1, 32768		# $t1 = 32768 (128*64*4)
@@ -704,7 +858,7 @@ bg_loop:
 	
 	# Colour the ith pixel
 	add  $t2, $gp, $t0	# $t2 = addr($gp) + i
-	sw   $t9, ($t2)		# Set pixel at addr($gp) + i to primary bg color
+	sw   $s5, ($t2)		# Set pixel at addr($gp) + i to bg color
 	
 	# Update i and loop again
 	addi $t0, $t0, 4	# i = i + 4
@@ -947,6 +1101,7 @@ crab_walk1: # draw walk_1 sprite
 	sw $t2, -32($t0)
 	sw $t2, -28($t0)
 	sw $t3, -24($t0)
+	sw $t2, -20($t0)
 	sw $t2, -12($t0)
 	sw $t2, -8($t0)
 	sw $t2, -4($t0)
@@ -1489,7 +1644,7 @@ sp_exit:
 
 # stamp_pufferfish():
 # 	"Stamps" a pufferfish onto the display
-#	$t0: pixel_address, $t1-$t5: colors, $t5: *pufferfish, $t6: world.darkness, $t7: temp
+#	$t0: pixel_address, $t1-$t5: colors, $t6: world.darkness, $t7: temp, $t8: *pufferfish,
 stamp_pufferfish:
 	li   $t1, 0x00a8c267	# $t1 = base color
 	li   $t2, 0x00929644	# $t2 = fin/spikes color
@@ -1508,9 +1663,11 @@ stamp_pufferfish:
 	sub  $t3, $t3, $t7
 	sub  $t4, $t4, $t7
 	
-	# Get pixel address of pufferfish
-	la   $t5, pufferfish
-	lw   $t0, 0($t5)	# $t0 = address of pixel
+	# Get pixel address and state of pufferfish
+	la   $t8, pufferfish
+	lw   $t7, 0($t8)	# $t7 = puffefish.state
+	beq  $t7, 0, spuff_done	# if state==0, is invisible; don't display it
+	lw   $t0, 4($t8)	# $t0 = address of pixel
 	
 	# Color the pixels appropriately
 	sw $t1, -32($t0)
@@ -1847,7 +2004,8 @@ stamp_pufferfish:
 	addi $t0, $t0, WIDTH
 	sw $t4, -16($t0)
 	sw $t4, 16($t0)
-	
+
+spuff_done:
 	# Return to caller
 	jr $ra
 # ---------------------------------------------------------------------------------------
@@ -1870,9 +2028,11 @@ stamp_seahorse:
 	sub  $t1, $t1, $t7
 	sub  $t2, $t2, $t7
 
-	# Get pixel address
+	# Get pixel address and state
 	la   $t5, seahorse
-	lw   $t0, 0($t5)	# $t0 = address of pixel
+	lw   $t7, 0($t5)	# $t7 = seahorse.state
+	beq  $t7, 0, ssh_done	# if state==0, is invisible; don't display it
+	lw   $t0, 4($t5)	# $t0 = address of pixel
 	
 	# Color the pixels appropriately
 	sw $t1, 0($t0)
@@ -1906,7 +2066,8 @@ stamp_seahorse:
 	sw $t1, 4($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t1, 0($t0)
-	
+
+ssh_done:	
 	# Return to caller			
 	jr $ra
 # ---------------------------------------------------------------------------------------
@@ -1943,13 +2104,7 @@ sb_loop:
 	# Current time = $s6,  Time of pop = $t7
 	addi $t7, $t7, POP_TIME
 	ble  $s6, $t7, sb_popped # If current time <= bubble's time of death + POP_TIME, draw popped 
-	addi $t7, $t7, BUBBLE_REGEN
-	ble  $s6, $t7, sb_update # If current_time <= bubble's time of dissipation + BUBBLE_REGEN, don't stamp it.
-				 # else, bubble has regenerated
-	li   $t7, 1
-	sw   $t7, 0($t5)	# Set bubble.state = 1
-	# TODO: It might be better to set the state somewhere else. update_entities() perhaps...?
-	# Then we can instead just check "If current time <= bubble's time of death + POP_TIME", and not draw otherwise
+	j    sb_update	 	 # Otherwise don't draw a bubble
 				
 sb_bubble:
 	# Stamp an intact bubble
@@ -2042,7 +2197,7 @@ sb_popped:
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -36($t0)
 	sw   $t1, 20($t0)
-	sw   $t1, 35($t0)
+	sw   $t1, 36($t0)
 	addi $t0, $t0, -WIDTH
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
@@ -2100,8 +2255,8 @@ stamp_stars:
 	li   $t8, 0		# i = 0
 	la   $t4, stars		# $t4 = addr(stars)
 	
-ss_loop: # while i <= NUM_STARS :
-	beq  $t8, NUM_STARS, ss_exit	# if i==NUM_PLATFORMS, branch to `ss_exit`
+sss_loop: # while i <= NUM_STARS :
+	beq  $t8, NUM_STARS, sss_exit	# if i==NUM_PLATFORMS, branch to `ss_exit`
 	
 	# Get values for this star
 	sll  $t7, $t8, 3	# $t7 = 8 * i
@@ -2109,7 +2264,7 @@ ss_loop: # while i <= NUM_STARS :
 	lw   $t0, 4($t7)	# $t0 = star.position
 	lw   $t7, 0($t7)	# $t7 = star.state
 	
-	beqz $t7, ss_update	# if star.state == 0, it is invisible; skip it
+	beqz $t7, sss_update	# if star.state == 0, it is invisible; skip it
 
 	# Stamp a sea star on the display
 	sw   $t1, -4($t0)
@@ -2127,12 +2282,12 @@ ss_loop: # while i <= NUM_STARS :
 	addi $t0, $t0, -WIDTH
 	sw   $t1, 0($t0)
 
-ss_update:
+sss_update:
 	# Update index
 	addi $t8, $t8, 1	# i = i + 1
-	j ss_loop		# Restart loop
+	j sss_loop		# Restart loop
 
-ss_exit:
+sss_exit:
 	# Return to caller			
 	jr $ra
 # ---------------------------------------------------------------------------------------
@@ -2147,6 +2302,7 @@ ss_exit:
 #	Given the values in the struct `world`, determines the 
 #	correct background color, stores it in $v0
 #	$t3: world.darkness
+#	[CURRENTLY UNUSED, KEEPING IT FOR BACKUP]
 _get_bg_color:
 	lw   $t3, 4($s0)		# $t3 = world.darkness
 	beq  $t3, 0, gbc_level_0	# branch if world.darkness == 0
@@ -2173,21 +2329,11 @@ gbc_exit:
 
 # unstamp_crab():
 # 	Removes the crab from the display at the position in $s2
-#	$t0: crab_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: crab_position, $t1: bg_color
 unstamp_crab:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
+	move $t0, $s2		# Put last crab.pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $s2
 	# Color the pixels appropriately
 	sw   $t1, -16($t0)
 	sw   $t1, -12($t0)
@@ -2287,21 +2433,10 @@ unstamp_crab:
 
 # unstamp_clam()
 # 	Removes the clam from the display at the position in $s2
-#	$t0: clam_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: clam_position, $t1: bg_color
 unstamp_clam:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $a0
+	move $t0, $a0		# Put clam pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 
 	# Color pixels appropriately
 	sw $t1, -16($t0)
@@ -2433,21 +2568,10 @@ unstamp_clam:
 
 # unstamp_piranha($a0 = *position)
 # 	Removes piranha from the display at $a0
-#	$t0: piranha_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: piranha_position, $t1: bg_color
 unstamp_piranha:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $a0
+	move $t0, $a0		# Put piranha pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 	
 	# Color the pixels appropriately
 	addi $t0, $t0, -WIDTH
@@ -2591,21 +2715,10 @@ unstamp_piranha:
 
 # unstamp_pufferfish($a0 = *pixel):
 # 	Removes pufferfish from the display at $a0
-#	$t0: puffer_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: puffer_position, $t1: bg_color
 unstamp_pufferfish:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $a0
+	move $t0, $a0		# Put pufferfish pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 	
 	# Color the pixels appropriately
 	sw $t1, -32($t0)
@@ -2950,21 +3063,10 @@ unstamp_pufferfish:
 
 # unstamp_seahorse($a0=*position)
 # 	Removes seahorse from the display at $a0
-#	$t0: seahorse_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: seahorse_position, $t1: bg_color
 unstamp_seahorse:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $a0
+	move $t0, $a0		# Put seahorse pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 	
 	sw $t1, 0($t0)
 	sw $t1, 4($t0)
@@ -3005,21 +3107,10 @@ unstamp_seahorse:
 
 # unstamp_bubble($a0=*position)
 # 	Removes bubble from the display at $a0
-#	$t0: bubble_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: bubble_position, $t1: bg_color
 unstamp_bubble:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $a0
+	move $t0, $a0		# Put bubble pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 	
 	# Stamp a popped bubble
 	addi $t0, $t0, WIDTH
@@ -3058,7 +3149,7 @@ unstamp_bubble:
 	sw   $t1, -28($t0)
 	sw   $t1, 20($t0)
 	sw   $t1, 28($t0)
-	sw   $t1, 35($t0)
+	sw   $t1, 36($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
 	sw   $t1, 32($t0)
@@ -3121,21 +3212,10 @@ unstamp_bubble:
 
 # unstamp_star($a0=*position)
 # 	Removes star from the display at $a0
-#	$t0: star_position, $t1: bg_color, $t3: in _get_bg_color
+#	$t0: star_position, $t1: bg_color
 unstamp_star:
-	# Push return address onto stack
-	addi $sp, $sp, -4
-	sw   $ra, 0($sp)
-	
-	# Obtain background color
-	jal  _get_bg_color
-	move $t1, $v0		# $t1 = sea colour
-	
-	# Pop old return address from stack
-	lw   $ra, 0($sp)	# $ra = old return address
-	addi $sp, $sp, 4
-	
-	move $t0, $a0
+	move $t0, $a0		# Put sea star pos into $t0
+	move $t1, $s5		# Put bg colour into $t1
 
 	# Remove a sea star from the display
 	sw   $t1, -4($t0)
