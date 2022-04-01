@@ -18,6 +18,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `UPPER_LIMIT`: height to pass to get to next level
  - `POP_TIME`: number of screen refreshes before a popped bubble dissipates
  - `BUBBLE_REGEN`: number of screen refreshes before a bubble regenerates
+ - `MAX_TIME`: time to complete level by to earn a time bonus
  - `STAR_PTS`: points earned per sea star
  - `CLAM_PTS`: points earned per clam
  - `SEAHORSE_PTS`: points earned per sea horse
@@ -114,15 +115,14 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Bubble sprite + popped sprite(?)~~
  - [x] ~~Implement `update_positions()` to move pufferfish and piranha positions~~
  - [x] ~~Detect if touching other entities~~
- - [ ] Implement temporary bubble platforms
+ - [x] ~~Implement temporary bubble platforms~~
+ - [x] ~~Make Level 2~~
  - [ ] Falling off screen leads to game over
  - [ ] Fail condition / Game over screen
  - [ ] Add dead crab sprite
- - [ ] Make Level 2
  - [ ] Win condition / Win screen
+ - [ ] Make Level 3
 
 ## Ideas: 
- - Pufferfish float up and down, through platforms
- - Piranha paces left and right along platforms
- - Get points from pearls, sea stars, and sea horses
- - Bubbles that you can double bounce on, but pop and come back after X display refreshes
+ - May be able to optimize movement of puffer and piranha (and reduce awful flickering) by changing stamp and unstamp functions. Since we know they always move a fixed amount, we can stamp the bg color within stamp_ functions to cover where they moved from. Then don't call unstamp in main, only call when changing levels
+ - Should also optimize by calling unstamp_ functions only if state changes (for star, seahorse, clam, bubble) but still stamp every time
