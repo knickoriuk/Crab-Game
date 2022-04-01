@@ -56,6 +56,9 @@
 .eqv	UPPER_LIMIT	0x10009000	# Height that, if surpassed, moves to next level 
 .eqv	POP_TIME	10		# Number of screen refreshes before a popped bubble dissipates
 .eqv	BUBBLE_REGEN	100		# Number of screen refreshes before bubble regenerates. BUBBLE_REGEN > POP_TIME
+.eqv	STAR_PTS	10		# Number of points earned per sea star collected
+.eqv	CLAM_PTS	100		# Number of points earned per clam collected
+.eqv	SEAHORSE_PTS	100		# Number of points earned per seahorse collected	
 
 .data
 frame_buffer: 	.space		32768
@@ -65,11 +68,10 @@ crab:		.space		12
 #	int state; 	# 0-walk_0, 1-walk_1, 2-jump/fall, 3-dead
 #	int jump_timer; # counts down frames of rising, before falling down
 # } crab;
-world:		.space		12
+world:		.space		8
 # struct world {
 #	int level:	# 0,1,2,3,4,5,6... However many I end up making
 #	int darkness:	# 4, 3, 2, 1, 0
-#	int score;	# Holds score
 # }
 clam:		.space		8
 # struct clam {
@@ -113,7 +115,7 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 # $s0 - `world` data pointer
 # $s1 - `crab` data pointer
 # $s2 - Last crab location
-# $s3 -
+# $s3 - Score
 # $s4 -
 # $s5 - background colour
 # $s6 - timer: number of screen refreshes since level start
@@ -123,6 +125,7 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 ########## Initialize Game Values ##########
 main:	la   $s0, world
 	la   $s1, crab
+	li   $s3, 0
 	li   $s5, SEA_COL_4
 	li   $s6, 0
 	li   $s7, 0
@@ -190,12 +193,34 @@ update_display2:
 	jal  stamp_crab	
 	jal  stamp_piranha
 	jal  stamp_pufferfish
+	jal  display_score
 	
 	jal  detect_collisions
 	
+########## Game Over? ##########
+
+	bne  $s7, 1, sleep	# If alive, skip this step
+	li   $s5, 0		# set bg color to black
+	jal generate_background
+	# TODO: Show game over screen
+	
+game_over_loop:	
+	li   $t9, KEYSTROKE
+	lw   $t9, 0($t9) 	# $t0 = 1 if key hit, 0 otherwise
+	
+	li   $a0, SLEEP_DUR	# Sleep a bit
+	li   $v0, 32
+	syscall
+	
+	beqz $t9, game_over_loop # loop until a key is pressed
+	li   $t9, KEYSTROKE
+	lw   $t9, 4($t9)  	 # $t9 = last key hit 
+	bne  $t9, 0x70, game_over_loop # if `p` was not pressed, loop again
+	j    main
+	
 ########## Sleep and Repeat ##########
 
-	addi $s6, $s6, 1	# add 1 to timer
+sleep:	addi $s6, $s6, 1	# add 1 to timer
 	# Sleep for `SLEEP_DUR` milliseconds
 	li   $a0, SLEEP_DUR
 	li   $v0, 32
@@ -632,7 +657,208 @@ update_done:
 
 # detect_collisions():
 #	Detects if the crab is touching any entities, based on positions stored in data structs
+#	$t0: crab.pos, $t1: temp, $t2: index i, $t3: index j, 
+#	$t6-$t7: temp hitboxes, $t8-$t9: crab hitbox
 detect_collisions:
+	lw   $t0, 0($s1)	# $t0 = crab.pos
+	# Checking 6 hot spots around the crab so we don't have to check everything every time
+	lw   $t1, 0($t0)		# $t1 = color under crab belly
+	bne  $t1, $s5, dc_check		# if color is not bg_color, check for collisions
+	lw   $t1, -276($t0)		# $t1 = color under left claw
+	bne  $t1, $s5, dc_check		# :
+	lw   $t1, -236($t0)		# $t1 = color under right claw
+	bne  $t1, $s5, dc_check		# :
+	lw   $t1, -1280($t0)		# $t1 = color above crab head
+	bne  $t1, $s5, dc_check		# :
+	lw   $t1, -1296($t0)		# $t1 = color above left claw
+	bne  $t1, $s5, dc_check		# :
+	lw   $t1, -1264($t0)		# $t1 = color above right claw
+	bne  $t1, $s5, dc_check		# :
+	jr   $ra			# Otherwise, (probably) no collisions
+	
+dc_check: # Check collisions with all entities
+	# Store $ra
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	# Set up crab hitbox registers
+	addi $t8, $t0, -28	# $t8 = bottom left
+	addi $t9, $t0, 28	# $t9 = bottom right
+
+dc_check_puff: # Check collisions with pufferfish
+	la   $t0, pufferfish	# $t0 = *pufferfish
+
+	lw   $t1, 0($t0)	# $t1 = puffer.state
+	beqz $t1, dc_check_piranhas # if state==0, invisible; skip it
+	lw   $t1, 4($t0)	# $t1 = puffer.pos
+		
+	addi $t6, $t8, 732	# $t6 = lower left hitbox
+	addi $t7, $t9, 804	# $t7 = lower right hitbox
+	li   $t3, 0		# $t3 = j =0
+	dccpu_hitbox_check:
+		beq  $t3, 16, dc_check_piranhas	# Exit loop after 16 rows checked
+		# if clam.pos not within $t6 - $t7, check next row up
+		bgt  $t1, $t7, dccpu_hitbox_update
+		blt  $t1, $t6, dccpu_hitbox_update
+		
+		# Otherwise, crab has collided with puffer.
+		li   $s7, 1	# set alive/dead flag to dead
+		
+		# Don't check anything else, you're dead
+		j    dc_done
+		
+	dccpu_hitbox_update:
+		addi $t3, $t3, 1	# $t3 = j + 1
+		addi $t6, $t6, -WIDTH	# iterate over next row up
+		addi $t7, $t7, -WIDTH
+		j    dccpu_hitbox_check
+		
+dc_check_piranhas: # Check collisions with piranhas
+	la   $t0, piranha1	# $t0 = *piranha1
+	li   $t2, 0		# $t2 = i = 0
+	dccpi_loop:
+		beq  $t2, 2, dc_check_star
+		lw   $t1, 0($t0)	# $t1 = piranha.state
+		beqz $t1, dccpi_update	# if state==0, invisible; skip this piranha
+		lw   $t1, 4($t0)	# $t1 = piranha.pos
+		
+		addi $t6, $t8, 2544	# $t6 = lower left hitbox
+		addi $t7, $t9, 2576	# $t7 = lower right hitbox
+		li   $t3, 0		# $t3 = j =0
+		dccpi_hitbox_check:
+			beq  $t3, 8, dccpi_update	# Exit loop after 8 rows checked
+			# if star.pos not within $t6 - $t7, check next row up
+			bgt  $t1, $t7, dccpi_hitbox_update
+			blt  $t1, $t6, dccpi_hitbox_update
+			
+			# Otherwise, crab has collided with piranha.
+			li   $s7, 1	# set alive/dead flag to dead
+			
+			# Don't check anything else, you are dead
+			j    dc_done
+			
+		dccpi_hitbox_update:
+			addi $t3, $t3, 1	# $t3 = j + 1
+			addi $t6, $t6, -WIDTH	# iterate over next row up
+			addi $t7, $t7, -WIDTH
+			j    dccpi_hitbox_check
+
+	dccpi_update:
+		addi $t2, $t2, 1	# $t2 = i + 1
+		addi $t0, $t0, 8	# $t0 = *piranha2
+		j    dccpi_loop
+	
+dc_check_star: # Check collisions with sea stars
+	la   $t0, stars		# $t0 = *stars
+	li   $t2, 0		# $t2 = i = 0
+	dccss_loop:
+		beq  $t2, NUM_STARS, dc_check_clam
+		lw   $t1, 0($t0)	# $t1 = star.state
+		beqz $t1, dccss_update	# if state==0, invisible; skip this star
+		lw   $t1, 4($t0)	# $t1 = star.pos
+		
+		move $t6, $t8		# $t6 = lower left hitbox
+		move $t7, $t9		# $t7 = lower right hitbox
+		li   $t3, 0		# $t3 = j =0
+		dccss_hitbox_check:
+			beq  $t3, 7, dccss_update	# Exit loop after 7 rows checked
+			# if star.pos not within $t6 - $t7, check next row up
+			bgt  $t1, $t7, dccss_hitbox_update
+			blt  $t1, $t6, dccss_hitbox_update
+			
+			# Otherwise, crab has collided with star.
+			addi $s3, $s3, STAR_PTS	# add STAR_PTS to score
+			li   $t1, 0
+			sw   $t1, 0($t0)	# Set star.state to 0 (invisible)
+			lw   $a0, 4($t0)
+			jal  unstamp_star	# Remove star from display
+			
+			# Don't check other stars
+			j    dc_check_clam
+			
+		dccss_hitbox_update:
+			addi $t3, $t3, 1	# $t3 = j + 1
+			addi $t6, $t6, -WIDTH	# iterate over next row up
+			addi $t7, $t7, -WIDTH
+			j    dccss_hitbox_check
+
+	dccss_update:
+		addi $t2, $t2, 1	# $t2 = i + 1
+		addi $t0, $t0, 8	# $t0 = *stars[i+1]
+		j    dccss_loop
+		
+dc_check_clam: # Check collisions with clam
+	la   $t0, clam		# $t0 = *clam
+
+	lw   $t1, 0($t0)	# $t1 = clam.state
+	bne  $t1, 1, dc_check_seahorse # if state!=1, invisible or closed; skip it
+	lw   $t1, 4($t0)	# $t1 = clam.pos
+		
+	addi $t6, $t8, -24	# $t6 = lower left hitbox
+	addi $t7, $t9, 24	# $t7 = lower right hitbox
+	li   $t3, 0		# $t3 = j =0
+	dccc_hitbox_check:
+		beq  $t3, 3, dc_check_seahorse	# Exit loop after 3 rows checked
+		# if clam.pos not within $t6 - $t7, check next row up
+		bgt  $t1, $t7, dccc_hitbox_update
+		blt  $t1, $t6, dccc_hitbox_update
+		
+		# Otherwise, crab has collided with clam.
+		addi $s3, $s3, CLAM_PTS	# add CLAM_PTS to score
+		li   $t1, 2
+		sw   $t1, 0($t0)	# Set clam.state to 2 (closed)
+		lw   $a0, 4($t0)
+		jal  unstamp_clam	# Remove clam from display
+		
+		# Don't check other rows
+		j    dc_check_seahorse
+		
+	dccc_hitbox_update:
+		addi $t3, $t3, 1	# $t3 = j + 1
+		addi $t6, $t6, -WIDTH	# iterate over next row up
+		addi $t7, $t7, -WIDTH
+		j    dccc_hitbox_check
+	
+dc_check_seahorse: # Check collisions with seahorse
+	la   $t0, seahorse	# $t0 = *seahorse
+
+	lw   $t1, 0($t0)	# $t1 = seahorse.state
+	beq  $t1, 0, dc_check_bubbles # if state==0, invisible; skip it
+	lw   $t1, 4($t0)	# $t1 = seahorse.pos
+		
+	addi $t6, $t8, 1024	# $t6 = lower left hitbox
+	addi $t7, $t9, 1024	# $t7 = lower right hitbox
+	li   $t3, 0		# $t3 = j =0
+	dccsh_hitbox_check:
+		beq  $t3, 3, dc_check_bubbles	# Exit loop after 3 rows checked
+		# if seahorse.pos not within $t6 - $t7, check next row up
+		bgt  $t1, $t7, dccsh_hitbox_update
+		blt  $t1, $t6, dccsh_hitbox_update
+		
+		# Otherwise, crab has collided with seahorse.
+		addi $s3, $s3, SEAHORSE_PTS	# add SEAHORSE_PTS to score
+		li   $t1, 0
+		sw   $t1, 0($t0)	# Set seahorse.state to 0 (invisible)
+		lw   $a0, 4($t0)
+		jal  unstamp_seahorse	# Remove seahorse from display
+		
+		# Don't check other rows
+		j    dc_check_bubbles
+		
+	dccsh_hitbox_update:
+		addi $t3, $t3, 1	# $t3 = j + 1
+		addi $t6, $t6, -WIDTH	# iterate over next row up
+		addi $t7, $t7, -WIDTH
+		j    dccsh_hitbox_check
+		
+dc_check_bubbles:
+	# TODO: May have to alter sprite so that bubbles aren't passed over in the first check of this function
+
+dc_done:
+	# Restore $ra
+	lw   $ra, 0($sp)
+	addi $sp, $sp, 4
+	
+	# Return to caller
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
@@ -671,6 +897,8 @@ gen_level_0:
 	la   $t1, pufferfish
 	li   $t0, 0
 	sw   $t0, 0($t1)	# pufferfish.visible = invisible
+	# addi $t0, $gp, 10100
+	# sw   $t0, 4($t1)
 	
 	# clam data
 	la   $t1, clam
@@ -2239,18 +2467,20 @@ sb_exit:
 
 # stamp_stars():
 # 	"Stamps" all the sea stars onto the display, given what is stored in `stars`
-#	$t0: pixel_address, $t1: color, $t4: stars struct
+#	$t0: pixel_address, $t1-$t2: color, $t4: stars struct
 #	$t6: world.darkness, $t7: temp, $t8: index
 stamp_stars:
 	li   $t1, 0x00ffeb3b	# $t1 = star colour
+	li   $t2, 0x00502800	# $t2 = glow amount
 	
 	# Determine darkening factor
 	lw   $t6, 4($s0)	# $t6 = world.darkness
 	li   $t7, DARKNESS	# 
 	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
 	
-	# Darken colors based on darkening factor
+	# Alter colors based on darkening factor and glow amount
 	sub  $t1, $t1, $t7
+	add  $t2, $s5, $t2
 
 	li   $t8, 0		# i = 0
 	la   $t4, stars		# $t4 = addr(stars)
@@ -2267,31 +2497,63 @@ sss_loop: # while i <= NUM_STARS :
 	beqz $t7, sss_update	# if star.state == 0, it is invisible; skip it
 
 	# Stamp a sea star on the display
-	sw   $t1, -4($t0)
-	sw   $t1, 4($t0)
+	addi $t0, $t0, WIDTH
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
 	addi $t0, $t0, -WIDTH
+	sw   $t2, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t2, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
 	sw   $t1, -4($t0)
 	sw   $t1, 0($t0)
 	sw   $t1, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw   $t2, -12($t0)
 	sw   $t1, -8($t0)
 	sw   $t1, -4($t0)
 	sw   $t1, 0($t0)
 	sw   $t1, 4($t0)
 	sw   $t1, 8($t0)
+	sw   $t2, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
 	sw   $t1, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
 
 sss_update:
 	# Update index
 	addi $t8, $t8, 1	# i = i + 1
-	j sss_loop		# Restart loop
+	j    sss_loop		# Restart loop
 
 sss_exit:
 	# Return to caller			
-	jr $ra
+	jr   $ra
 # ---------------------------------------------------------------------------------------
 
+
+# display_score():
+#	Displays the score at the top-right corner
+display_score:
+	jr   $ra
+# ---------------------------------------------------------------------------------------
 
 #########################################################################
 #	UN-PAINTING FUNCTIONS						#
@@ -3218,12 +3480,12 @@ unstamp_star:
 	move $t1, $s5		# Put bg colour into $t1
 
 	# Remove a sea star from the display
-	sw   $t1, -4($t0)
-	sw   $t1, 4($t0)
-	addi $t0, $t0, -WIDTH
+	addi $t0, $t0, WIDTH
+	sw   $t1, -8($t0)
 	sw   $t1, -4($t0)
 	sw   $t1, 0($t0)
 	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -8($t0)
 	sw   $t1, -4($t0)
@@ -3231,7 +3493,33 @@ unstamp_star:
 	sw   $t1, 4($t0)
 	sw   $t1, 8($t0)
 	addi $t0, $t0, -WIDTH
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
 	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
 	
 	jr   $ra
 # ---------------------------------------------------------------------------------------
