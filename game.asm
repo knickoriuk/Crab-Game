@@ -35,7 +35,11 @@
 # - yes / no / yes, and please share this project github link as well! 
 # 
 # Any additional information that the TA needs to know: 
-# - (write here, if any) 
+# - Playing this game on different devices, I noticed a serious difference in 
+#   difficulty. My desktop was a lot harder to play on than my laptop. This could
+#   be either because it has a faster processor or because there is more of an input 
+#   delay on my keyboard. Anyway, increase SLEEP_DUR a bit if it seems hard. 
+# - Also noticed that MARS gets slow after running for a while, until restarted.
 # 
 #####################################################################
 
@@ -56,6 +60,7 @@
 .eqv	UPPER_LIMIT	0x10009000	# Height that, if surpassed, moves to next level 
 .eqv	POP_TIME	10		# Number of screen refreshes before a popped bubble dissipates
 .eqv	BUBBLE_REGEN	100		# Number of screen refreshes before bubble regenerates. BUBBLE_REGEN > POP_TIME
+.eqv	MAX_TIME	512		# Max time to complete level and still get time bonus
 .eqv	STAR_PTS	10		# Number of points earned per sea star collected
 .eqv	CLAM_PTS	100		# Number of points earned per clam collected
 .eqv	SEAHORSE_PTS	100		# Number of points earned per seahorse collected	
@@ -726,7 +731,7 @@ dc_check_piranhas: # Check collisions with piranhas
 		li   $t3, 0		# $t3 = j =0
 		dccpi_hitbox_check:
 			beq  $t3, 8, dccpi_update	# Exit loop after 8 rows checked
-			# if star.pos not within $t6 - $t7, check next row up
+			# if piranha.pos not within $t6 - $t7, check next row up
 			bgt  $t1, $t7, dccpi_hitbox_update
 			blt  $t1, $t6, dccpi_hitbox_update
 			
@@ -851,7 +856,45 @@ dc_check_seahorse: # Check collisions with seahorse
 		j    dccsh_hitbox_check
 		
 dc_check_bubbles:
-	# TODO: May have to alter sprite so that bubbles aren't passed over in the first check of this function
+	la   $t0, bubble1	# $t0 = *bubble1
+	li   $t2, 0		# $t2 = i = 0
+	dccb_loop:
+		beq  $t2, 2, dc_done
+		lw   $t1, 0($t0)	# $t1 = bubble.state
+		bne  $t1, 1, dccb_update # if state!=1, invisible/popped; skip it
+		lw   $t1, 4($t0)	# $t1 = bubble.pos
+		
+		addi $t6, $t8, 2544	# $t6 = lower left hitbox
+		addi $t7, $t9, 2576	# $t7 = lower right hitbox
+		li   $t3, 0		# $t3 = j =0
+		dccb_hitbox_check:
+			beq  $t3, 10, dccb_update	# Exit loop after 8 rows checked
+			# if bubble.pos not within $t6 - $t7, check next row up
+			bgt  $t1, $t7, dccb_hitbox_update
+			blt  $t1, $t6, dccb_hitbox_update
+			
+			# Otherwise, crab has collided with a bubble.
+			sw   $s6, 0($t0)	# set bubble.state to level timer
+			move $a0, $t1		# $a0 = bubble.pos
+			jal  unstamp_bubble
+			li   $t1, CRAB_UP_DIST
+			sw   $t1, 8($s1)	# set crab.jump_timer to CRAB_UP_DIST
+			li   $t1, 2
+			sw   $t1, 4($s1)	# set crab.state to 2 (jumping)
+			
+			# Don't check other bubble
+			j    dc_done
+			
+		dccb_hitbox_update:
+			addi $t3, $t3, 1	# $t3 = j + 1
+			addi $t6, $t6, -WIDTH	# iterate over next row up
+			addi $t7, $t7, -WIDTH
+			j    dccb_hitbox_check
+
+	dccb_update:
+		addi $t2, $t2, 1	# $t2 = i + 1
+		addi $t0, $t0, 8	# $t0 = *bubble2
+		j    dccb_loop
 
 dc_done:
 	# Restore $ra
@@ -896,9 +939,7 @@ gen_level_0:
 	# pufferfish data
 	la   $t1, pufferfish
 	li   $t0, 0
-	sw   $t0, 0($t1)	# pufferfish.visible = invisible
-	# addi $t0, $gp, 10100
-	# sw   $t0, 4($t1)
+	sw   $t0, 0($t1)	# pufferfish.state = invisible
 	
 	# clam data
 	la   $t1, clam
@@ -936,9 +977,9 @@ gen_level_0:
 	sw   $t0, 24($t1)	
 	li   $t0, 4 # = platform_4.len
 	sw   $t0, 28($t1)	
-	addi $t0, $gp, 3196 # = platform_5.pos
+	addi $t0, $gp, 2908 # = platform_5.pos
 	sw   $t0, 32($t1)	
-	li   $t0, 6 # = platform_5.len
+	li   $t0, 5 # = platform_5.len
 	sw   $t0, 36($t1)	
 	addi $t0, $gp, 31744 # = platform_6.pos
 	sw   $t0, 40($t1)
@@ -959,8 +1000,10 @@ gen_level_0:
 	sw   $t0, 16($t1)
 	add  $t0, $gp, 19872 # = star_3.pos
 	sw   $t0, 20($t1)
-	li   $t0, 0 # = star_4.state = invisible
+	li   $t0, 1 # = star_4.state = visible
 	sw   $t0, 24($t1)
+	add  $t0, $gp, 7240 # = star_4.pos
+	sw   $t0, 28($t1)
 	li   $t0, 0 # = star_5.state = invisible
 	sw   $t0, 32($t1)
 	li   $t0, 0 # = star_6.state = invisible
@@ -979,10 +1022,18 @@ gen_level_0:
 #	Sets up the structs according to the level specified in world.level
 gen_next_level:
 	lw   $t0, 0($s0)	# $t0 = world.level
+	
+	# Calculate time bonus for level
+	li   $t1, MAX_TIME
+	sub  $t1, $t1, $s6	# $t1 = MAX_TIME - (time to complete level)
+	blez $t1, gen_level_select # Skip if negative
+	sra  $t1, $t1, 2	# $t1 = $t1/4
+	add  $s3, $s3, $t1	# Add time bonus to score
 
+gen_level_select:
 	# Branch to correct level setup:
 	beq  $t0, 1, gen_level_1
-	beq  $t0, 2, gen_level_1
+	beq  $t0, 2, gen_level_2
 	beq  $t0, 3, gen_level_1
 	beq  $t0, 4, gen_level_1
 	beq  $t0, 5, gen_level_1
@@ -990,6 +1041,68 @@ gen_next_level:
 	# TODO: WIN CONDITION: Deal with the last level differently
 
 gen_level_1: ##### LEVEL ONE #####
+	# crab data
+	lw   $t0, 0($s1)
+	add  $t0, $t0, 28928	# Move crab down to bottom of display
+	sw   $t0, 0($s1)
+	
+	# Bubbles
+	la   $t1, bubble1
+	li   $t0, 1 # = bubble1.state
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 27860 # = bubble1.pos
+	sw   $t0, 4($t1)
+	la   $t1, bubble2
+	li   $t0, 1 # = bubble2.state
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 27692 # = bubble2.pos
+	sw   $t0, 4($t1)
+
+	# Platforms
+	la   $t1, platforms
+	addi $t0, $gp, 31836 # = platform_1.pos
+	sw   $t0, 0($t1)
+	li   $t0, 5 # = platform_1.len
+	sw   $t0, 4($t1)
+	addi $t0, $gp, 19804 # = platform_2.pos
+	sw   $t0, 8($t1)
+	li   $t0, 5 # = platform_2.len
+	sw   $t0, 12($t1)
+	addi $t0, $gp, 12924 # = platform_3.pos
+	sw   $t0, 16($t1)
+	li   $t0, 8 # = platform_3.len
+	sw   $t0, 20($t1)	
+	addi $t0, $gp, 6912 # = platform_4.pos
+	sw   $t0, 24($t1)	
+	li   $t0, 8 # = platform_4.len
+	sw   $t0, 28($t1)	
+	addi $t0, $gp, 3740 # = platform_5.pos
+	sw   $t0, 32($t1)	
+	li   $t0, 4 # = platform_5.len
+	sw   $t0, 36($t1)	
+	li   $t0, 0 # = platform_6.len
+	sw   $t0, 44($t1)	
+	
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 1 # = star_1.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 19756 # = star_1.pos
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
+	sw   $t0, 8($t1)
+	addi $t0, $gp, 19924 # = star_2.pos
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
+	sw   $t0, 16($t1)
+	addi $t0, $gp, 27776 # = star_3.pos
+	sw   $t0, 20($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+
+	jr   $ra
+	
+gen_level_2: ##### LEVEL TWO #####
 	# world data
 	li   $t0, 3
 	sw   $t0, 4($s0)	# world.darkness = 3
@@ -997,7 +1110,7 @@ gen_level_1: ##### LEVEL ONE #####
 
 	# crab data
 	lw   $t0, 0($s1)
-	add  $t0, $t0, 28672	# Move crab down to bottom of display
+	add  $t0, $t0, 28160	# Move crab down to bottom of display
 	sw   $t0, 0($s1)
 		
 	# clam data
@@ -1006,6 +1119,21 @@ gen_level_1: ##### LEVEL ONE #####
 	sw   $t0, 0($t1)
 	li   $t0, 15152 # = clam.pos
 	add  $t0, $t0, $gp
+	sw   $t0, 4($t1)
+	
+	# Bubbles
+	la   $t1, bubble1
+	li   $t0, 0 # = bubble1.state = invisible
+	sw   $t0, 0($t1)
+	la   $t1, bubble2
+	li   $t0, 0 # = bubble2.state = invisible
+	sw   $t0, 0($t1)
+	
+	# pufferfish data
+	la   $t1, pufferfish
+	li   $t0, 1
+	sw   $t0, 0($t1)	# pufferfish.state = ascending
+	addi $t0, $gp, 13448
 	sw   $t0, 4($t1)
 
 	# Platforms
@@ -1035,36 +1163,37 @@ gen_level_1: ##### LEVEL ONE #####
 	sw   $t0, 32($t1)	
 	li   $t0, 3 # = platform_5.len
 	sw   $t0, 36($t1)
-	li   $t0, 31868 # = platform_6.pos
+	li   $t0, 31900 # = platform_6.pos
 	add  $t0, $t0, $gp
 	sw   $t0, 40($t1)	
-	li   $t0, 6 # = platform_6.len
-	sw   $t0, 44($t1)	
+	li   $t0, 4 # = platform_6.len
+	sw   $t0, 44($t1)
 	
+
 	# Sea Stars
 	la   $t1, stars
 	li   $t0, 1 # = star_1.state = visible
 	sw   $t0, 0($t1)
-	li   $t0, 24532 # = star_1.pos
+	li   $t0, 24276 # = star_1.pos
 	add  $t0, $t0, $gp
 	sw   $t0, 4($t1)
 	li   $t0, 1 # = star_2.state = visible
 	sw   $t0, 8($t1)
-	li   $t0, 17636 # = star_2.pos
+	li   $t0, 17380 # = star_2.pos
 	add  $t0, $t0, $gp
 	sw   $t0, 12($t1)
 	li   $t0, 1 # = star_3.state = visible
 	sw   $t0, 16($t1)
-	li   $t0, 10468 # = star_3.pos
+	li   $t0, 10212 # = star_3.pos
 	add  $t0, $t0, $gp
 	sw   $t0, 20($t1)
 
 	jr   $ra
 	
-gen_level_2: ##### LEVEL TWO #####
+gen_level_3: ##### LEVEL THREE #####
 	jr   $ra
 	
-gen_level_3: ##### LEVEL THREE #####
+gen_level_4: ##### LEVEL FOUR #####
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
@@ -2308,6 +2437,8 @@ ssh_done:
 #	$t0: pixel_address, $t1: color, $t5: bubble, $t6: world.darkness, $t7: temp, $t8: loop index
 stamp_bubble:
 	li   $t1, 0x00ffffff	# $t1 = white
+	li   $t2, 0x000a0a0a	
+	add  $t2, $t2, $s5	# $t2 = inner bubble color, slightly lighter than BG
 	
 	# Determine darkening factor
 	lw   $t6, 4($s0)		# $t6 = world.darkness
@@ -2320,6 +2451,7 @@ stamp_bubble:
 	# Loop twice: stamp each bubble
 	li   $t8, 0		# $t8 = 0; loop index
 	la   $t5, bubble1	# $t5 = *bubble1
+
 sb_loop:
 	beq  $t8, 2, sb_exit	# if $t8 == 2, return
 
@@ -2344,54 +2476,227 @@ sb_bubble:
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -16($t0)
 	sw   $t1, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
 	sw   $t1, 12($t0)
 	sw   $t1, 16($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
 	sw   $t1, 20($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
 	sw   $t1, 24($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
 	sw   $t1, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
 	sw   $t1, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t2, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
+	sw   $t2, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t2, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
+	sw   $t2, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t2, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
+	sw   $t2, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t2, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
+	sw   $t2, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t2, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
 	sw   $t1, 20($t0)
+	sw   $t2, 24($t0)
+	sw   $t2, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
 	sw   $t1, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
+	sw   $t2, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
 	sw   $t1, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
+	sw   $t2, 24($t0)
 	sw   $t1, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -24($t0)
+	sw   $t2, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
 	sw   $t1, 4($t0)
 	sw   $t1, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
+	sw   $t2, 20($t0)
 	sw   $t1, 24($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -20($t0)
+	sw   $t2, -16($t0)
+	sw   $t2, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
+	sw   $t2, 12($t0)
+	sw   $t2, 16($t0)
 	sw   $t1, 20($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -16($t0)
 	sw   $t1, -12($t0)
+	sw   $t2, -8($t0)
+	sw   $t2, -4($t0)
+	sw   $t2, 0($t0)
+	sw   $t2, 4($t0)
+	sw   $t2, 8($t0)
 	sw   $t1, 12($t0)
 	sw   $t1, 16($t0)
 	addi $t0, $t0, -WIDTH
@@ -3374,7 +3679,6 @@ unstamp_bubble:
 	move $t0, $a0		# Put bubble pos into $t0
 	move $t1, $s5		# Put bg colour into $t1
 	
-	# Stamp a popped bubble
 	addi $t0, $t0, WIDTH
 	addi $t0, $t0, WIDTH
 	sw   $t1, 0($t0)
@@ -3391,69 +3695,236 @@ unstamp_bubble:
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -16($t0)
 	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
 	sw   $t1, 12($t0)
 	sw   $t1, 16($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -24($t0)
 	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
 	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
 	sw   $t1, 20($t0)
 	sw   $t1, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
 	sw   $t1, 24($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
 	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
 	sw   $t1, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -36($t0)
+	sw   $t1, -32($t0)
 	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
 	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
 	sw   $t1, 28($t0)
+	sw   $t1, 32($t0)
 	sw   $t1, 36($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
 	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
 	sw   $t1, 32($t0)
 	sw   $t1, 40($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -32($t0)
+	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
 	sw   $t1, 32($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -36($t0)
 	sw   $t1, -32($t0)
-	sw   $t1, 20($t0)
-	sw   $t1, 32($t0)
-	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
-	sw   $t1, 28($t0)
-	sw   $t1, 32($t0)
-	addi $t0, $t0, -WIDTH
-	sw   $t1, -28($t0)
-	sw   $t1, -12($t0)
-	sw   $t1, 12($t0)
-	sw   $t1, 28($t0)
-	sw   $t1, 24($t0)
-	addi $t0, $t0, -WIDTH
 	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
 	sw   $t1, 4($t0)
 	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
+	sw   $t1, 32($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -28($t0)
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
+	sw   $t1, 24($t0)
+	sw   $t1, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw   $t1, -24($t0)
+	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
+	sw   $t1, 20($t0)
 	sw   $t1, 24($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -28($t0)
 	sw   $t1, -20($t0)
+	sw   $t1, -16($t0)
+	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
 	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
+	sw   $t1, 8($t0)
+	sw   $t1, 12($t0)
+	sw   $t1, 16($t0)
 	sw   $t1, 20($t0)
 	addi $t0, $t0, -WIDTH
 	sw   $t1, -16($t0)
 	sw   $t1, -12($t0)
+	sw   $t1, -8($t0)
+	sw   $t1, -4($t0)
+	sw   $t1, 0($t0)
+	sw   $t1, 4($t0)
 	sw   $t1, 8($t0)
 	sw   $t1, 12($t0)
 	sw   $t1, 16($t0)
@@ -3468,6 +3939,7 @@ unstamp_bubble:
 	addi $t0, $t0, -WIDTH
 	sw   $t1, 8($t0)
 	
+	# Return to caller
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
