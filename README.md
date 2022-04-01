@@ -19,7 +19,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `POP_TIME`: number of screen refreshes before a popped bubble dissipates
  - `BUBBLE_REGEN`: number of screen refreshes before a bubble regenerates
 
-### Global Variables:
+### Data Structs:
  - `frame_buffer`: additional space for display (confirm this is needed?)
  - `crab`:
    - +0: Position - Address of pixel
@@ -59,12 +59,23 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
    - +20: Platform3 Length
    - etc.
 
+### Global Registers:
+ - `$s0`: `world` struct
+ - `$s1`: `crab` struct
+ - `$s2`: last crab position
+ - `$s3`:
+ - `$s4`:
+ - `$s5`: background colour
+ - `$s6`: timer
+ - `$s7`: dead/alive flag, {0=alive, 1=dead}
+
 ## Functions
 
 ### Keyboard Input and Movement Functions:
  - `key_pressed()`
  - `do_jumps()`
  - `update_positions()`
+ - `detect_collisions()`
 
 ### Initialize Level Functions:
  - `gen_level_0()`
@@ -83,7 +94,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_stars()`
 
 ### Un-Painting Functions:
- - `_get_bg_color()`
+ - `_get_bg_color()` [no longer used]
  - `unstamp_crab()`
  - `unstamp_clam($a0=*position)`
  - `unstamp_piranha($a0=*position)`
@@ -98,7 +109,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level~~
  - [x] ~~Make Level 1 (`gen_level_1()`)~~
  - [x] ~~Bubble sprite + popped sprite(?)~~
- - [ ] Implement `update_positions()` to move pufferfish and piranha positions
+ - [x] ~~Implement `update_positions()` to move pufferfish and piranha positions~~
  - [ ] Detect if touching other entities
  - [ ] Implement temporary bubble platforms
  - [ ] Falling off screen leads to game over
@@ -113,4 +124,3 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - Get points from pearls, sea stars, and sea horses
  - Collision detection: can make square hitboxes, iterate over the pixels in the hitbox range to see if one of four points of the crab passed through it (upper left, upper right, lower left, lower right)
  - Bubbles that you can double bounce on, but pop and come back after X display refreshes
- - Can make background color a global variable ($s register) if there is one free, to save on calling `_get_bg_color()` so often
