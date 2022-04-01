@@ -18,6 +18,9 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `UPPER_LIMIT`: height to pass to get to next level
  - `POP_TIME`: number of screen refreshes before a popped bubble dissipates
  - `BUBBLE_REGEN`: number of screen refreshes before a bubble regenerates
+ - `STAR_PTS`: points earned per sea star
+ - `CLAM_PTS`: points earned per clam
+ - `SEAHORSE_PTS`: points earned per sea horse
 
 ### Data Structs:
  - `frame_buffer`: additional space for display (confirm this is needed?)
@@ -28,7 +31,6 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `world`:
    - +0: Level - {0,1,2,3,4,5, ...}
    - +4: Darkness - {4,3,2,1,0}
-   - +8: Score
  - `clam`:
    - +0: State - {0=invisible, 1=open, 2=closed}
    - +4: Position - Address of pixel
@@ -60,14 +62,14 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
    - etc.
 
 ### Global Registers:
- - `$s0`: `world` struct
- - `$s1`: `crab` struct
- - `$s2`: last crab position
- - `$s3`:
+ - `$s0`: Pointer to `world` struct
+ - `$s1`: Pointer to `crab` struct
+ - `$s2`: Last crab position
+ - `$s3`: Score
  - `$s4`:
- - `$s5`: background colour
- - `$s6`: timer
- - `$s7`: dead/alive flag, {0=alive, 1=dead}
+ - `$s5`: Background colour
+ - `$s6`: Timer
+ - `$s7`: Dead/alive flag, {0=alive, 1=dead}
 
 ## Functions
 
@@ -92,6 +94,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_seahorse()`
  - `stamp_bubble()`
  - `stamp_stars()`
+ - `display_score()`
 
 ### Un-Painting Functions:
  - `_get_bg_color()` [no longer used]
@@ -110,7 +113,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Make Level 1 (`gen_level_1()`)~~
  - [x] ~~Bubble sprite + popped sprite(?)~~
  - [x] ~~Implement `update_positions()` to move pufferfish and piranha positions~~
- - [ ] Detect if touching other entities
+ - [x] ~~Detect if touching other entities~~
  - [ ] Implement temporary bubble platforms
  - [ ] Falling off screen leads to game over
  - [ ] Fail condition / Game over screen
@@ -122,5 +125,4 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - Pufferfish float up and down, through platforms
  - Piranha paces left and right along platforms
  - Get points from pearls, sea stars, and sea horses
- - Collision detection: can make square hitboxes, iterate over the pixels in the hitbox range to see if one of four points of the crab passed through it (upper left, upper right, lower left, lower right)
  - Bubbles that you can double bounce on, but pop and come back after X display refreshes
