@@ -7,6 +7,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 ### Constants:
  - `WIDTH`: width of display
  - `SLEEP_DUR`: duration of sleep between loops
+ - `DEATH_PAUSE`: duration of sleep after dying
  - `INIT_POS`: position of crab at game start, offset from $gp
  - `KEYSTROKE`: address where key inputs is stored
  - `SEA_COL_0` through `SEA_COL_4`: background colours
@@ -98,11 +99,9 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `display_score()`
 
 ### Un-Painting Functions:
- - `_get_bg_color()` [no longer used]
  - `unstamp_crab()`
  - `unstamp_clam($a0=*position)`
  - `unstamp_piranha($a0=*position)`
- - `unstamp_pufferfish($a0=*position)`
  - `unstamp_seahorse($a0=*position)`
  - `unstamp_bubble($a0=*position)`
  - `unstamp_star($a0=*position)`
@@ -117,12 +116,13 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Detect if touching other entities~~
  - [x] ~~Implement temporary bubble platforms~~
  - [x] ~~Make Level 2~~
- - [ ] Falling off screen leads to game over
+ - [x] ~~Falling off screen leads to game over~~
+ - [x] ~~Add dead crab sprite~~
+ - [ ] Add 3x5 sprites for numbers 0-9
+ - [ ] Show score on screen
  - [ ] Fail condition / Game over screen
- - [ ] Add dead crab sprite
  - [ ] Win condition / Win screen
  - [ ] Make Level 3
 
 ## Ideas: 
- - May be able to optimize movement of puffer and piranha (and reduce awful flickering) by changing stamp and unstamp functions. Since we know they always move a fixed amount, we can stamp the bg color within stamp_ functions to cover where they moved from. Then don't call unstamp in main, only call when changing levels
- - Should also optimize by calling unstamp_ functions only if state changes (for star, seahorse, clam, bubble) but still stamp every time
+ - Play a two or three tone sound effect when picking up sea stars/clams/sea horse, and when dying
