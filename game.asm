@@ -15,7 +15,7 @@
 # 
 # Which milestones have been reached in this submission? 
 # (See the assignment handout for descriptions of the milestones) 
-# - Milestone 1/2/3 (choose the one the applies) 
+# - Milestone 2
 # 
 # Which approved features have been implemented for milestone 3? 
 # (See the assignment handout for the list of additional features) 
@@ -33,6 +33,7 @@
 # 
 # Are you OK with us sharing the video with people outside course staff? 
 # - yes / no / yes, and please share this project github link as well! 
+# - GitHub Link: https://github.com/knickoriuk/Crab-Game
 # 
 # Any additional information that the TA needs to know: 
 # - Playing this game on different devices, I noticed a serious difference in 
@@ -200,7 +201,8 @@ update_display2:
 	jal  stamp_stars
 	jal  stamp_clam
 	jal  stamp_seahorse
-	jal  stamp_crab	
+	jal  stamp_crab
+	addi $a0, $gp, 940	# $a0 = *position for scoreboard
 	jal  display_score
 	
 	bne  $s7, 1, sleep	# If alive, skip to `sleep`
@@ -213,6 +215,8 @@ update_display2:
 
 	li   $s5, 0		# set bg color to black
 	jal generate_background
+	addi $a0, $gp, 15456	# $a0 = *position for scoreboard
+	jal  display_score
 	# TODO: Show game over screen
 	
 game_over_loop:	
@@ -3044,9 +3048,307 @@ sss_exit:
 # ---------------------------------------------------------------------------------------
 
 
-# display_score():
-#	Displays the score at the top-right corner
+# display_score($a0 = *position):
+#	Displays the 5-digit score at the position $a0
+#	$t0: temp, $t1-$t4: modulos of the score, $t5: *position
 display_score:
+	# Store $ra on stack
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)
+	
+	# Calculate the digits to print
+	li   $t0, 10
+	div  $s3, $t0
+	mfhi $t1	# $t1 = $s3 % 10
+	li   $t0, 100
+	div  $s3, $t0
+	mfhi $t2	# $t2 = $s3 % 100
+	li   $t0, 1000
+	div  $s3, $t0
+	mfhi $t3	# $t3 = $s3 % 1000
+	li   $t0, 10000
+	div  $s3, $t0
+	mfhi $t4	# $t4 = $s3 % 10000
+	
+	move $t5, $a0
+
+	# First Digit
+	sub  $a1, $s3, $t4	
+	div  $a1, $a1, 10000	# $a1 = 1st digit of score
+	move $a0, $t5		# $a0 = position of 1st digit
+	jal  _display_number
+	
+	# Second Digit
+	sub  $a1, $t4, $t3	
+	div  $a1, $a1, 1000	# $a1 = 2nd digit of score
+	add  $a0, $t5, 16	# $a0 = position of 2nd digit
+	jal  _display_number
+	
+	# Third Digit
+	sub  $a1, $t3, $t2	
+	div  $a1, $a1, 100	# $a1 = 3rd digit of score
+	add  $a0, $t5, 32	# $a0 = position of 3rd digit
+	jal  _display_number
+	
+	# Fourth Digit
+	sub  $a1, $t2, $t1	
+	div  $a1, $a1, 10	# $a1 = 4th digit of score
+	add  $a0, $t5, 48	# $a0 = position of 4th digit
+	jal  _display_number
+	
+	# Fourth Digit	
+	move $a1, $t1		# $a1 = 5th digit of score
+	add  $a0, $t5, 64	# $a0 = position of 5th digit
+	jal  _display_number
+	
+	# Restore $ra from stack
+	lw   $ra, 0($sp)
+	addi $sp, $sp, 4
+	
+	# Return to caller
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
+
+# _display_number($a0=*position, $a1=number):
+#	Displays the number in $a1 at the position $a0
+#	Number must be in 0-9
+#	Cannot overwrite $t1-$t5!
+_display_number:
+	# Set up color
+	li   $t0, 0x00ffffff	# $t0 = white
+	
+	# Branch to appropriate digit
+	beq  $a1, 1, _display_1
+	beq  $a1, 2, _display_2
+	beq  $a1, 3, _display_3
+	beq  $a1, 4, _display_4
+	beq  $a1, 5, _display_5
+	beq  $a1, 6, _display_6
+	beq  $a1, 7, _display_7
+	beq  $a1, 8, _display_8
+	beq  $a1, 9, _display_9
+	
+	# Print a Zero
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_1: # Print a One
+	sw   $s5, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_2: # Print a Two
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_3: # Print a Three
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_4: # Print a Four
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_5: # Print a Five
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_6: # Print a Six
+	sw   $s5, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $s5, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_7: # Print a Seven
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_8: # Print an Eight
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	j    _display_done
+	
+_display_9: # Print a Nine
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $s5, 0($a0)
+	sw   $s5, 4($a0)
+	sw   $t0, 8($a0)
+	addi $a0, $a0, WIDTH
+	sw   $t0, 0($a0)
+	sw   $t0, 4($a0)
+	sw   $s5, 8($a0)
+	
+_display_done:
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
