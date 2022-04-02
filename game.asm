@@ -45,6 +45,7 @@
 
 .eqv	WIDTH		256		# Width of display
 .eqv	SLEEP_DUR	40		# Sleep duration between loops
+.eqv	DEATH_PAUSE	1024		# Sleep duration after death
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
 .eqv	SEA_COL_4	0x000b3e8a	# Sea colour, darkest
@@ -188,34 +189,39 @@ update_display:
 	jal  unstamp_crab		# remove old crab from display
 
 update_display2:
-	# Entities, if they move, are removed from display in update_positions()
+	# Entities, if they move, are removed from display in update_positions() or detect_collisions()
 	jal  update_positions	# Update positions of all entities
+	jal  detect_collisions
+	
+	jal  stamp_piranha
+	jal  stamp_pufferfish
 	jal  stamp_platforms
 	jal  stamp_bubble
 	jal  stamp_stars
 	jal  stamp_clam
 	jal  stamp_seahorse
 	jal  stamp_crab	
-	jal  stamp_piranha
-	jal  stamp_pufferfish
 	jal  display_score
 	
-	jal  detect_collisions
+	bne  $s7, 1, sleep	# If alive, skip to `sleep`
 	
 ########## Game Over? ##########
 
-	bne  $s7, 1, sleep	# If alive, skip this step
+	li   $a0, DEATH_PAUSE	# Sleep a while
+	li   $v0, 32
+	syscall
+
 	li   $s5, 0		# set bg color to black
 	jal generate_background
 	# TODO: Show game over screen
 	
 game_over_loop:	
-	li   $t9, KEYSTROKE
-	lw   $t9, 0($t9) 	# $t0 = 1 if key hit, 0 otherwise
-	
 	li   $a0, SLEEP_DUR	# Sleep a bit
 	li   $v0, 32
 	syscall
+	
+	li   $t9, KEYSTROKE
+	lw   $t9, 0($t9) 	# $t0 = 1 if key hit, 0 otherwise
 	
 	beqz $t9, game_over_loop # loop until a key is pressed
 	li   $t9, KEYSTROKE
@@ -391,7 +397,16 @@ dj_up:	# Move crab up
 	sw   $t3, 8($s1)	# crab.jump_timer = crab.jump_timer - 1
 	j dj_exit
 	
-dj_down: # Must first determine if we are on/would fall through a platform
+dj_down: # Move crab down
+	# if crab.pos > bottom row of display, trigger game over
+	addi $t4, $gp, 32512
+	blt  $t2, $t4, dj_down_check 
+	li   $s7, 1		# Set dead/alive flag to 1, for dead
+	li   $t4, 3
+	sw   $t4, 4($s1)	# crab.state = 3 (dead)
+	j    dj_exit
+
+dj_down_check: # Must determine if we are on/would fall through a platform
 	li   $t0, 0		# $t0 = i; outer loop index
 	la   $t7, platforms	# $t7 = *platforms
 	
@@ -490,12 +505,8 @@ update_positions:
 	beq  $t1, 1, move_puff_up	# If puffer.state == 1, move it up
 					# Otherwise, move it down
 	# Move Puffer Down
-	move $a0, $t2		# Store old position in $a0
 	addi $t2, $t2, WIDTH
 	sw   $t2, 4($t0)	# puffer.pos = 1 pixel below old puffer.pos
-	jal  unstamp_pufferfish	# Remove puffer from display
-	la   $t0, pufferfish	# Re-obtain puffer position after function call
-	lw   $t2, 4($t0)	# $t2 = new position
 	addi $t7, $gp, 32512	# If new pos is at bottom of display, change its direction
 	blt  $t2, $t7, update_piranha1
 	li   $t7, 1
@@ -503,12 +514,8 @@ update_positions:
 	j    update_piranha1
 	
 move_puff_up: # Move Puffer Up
-	move $a0, $t2		# Store old position in $a0
 	addi $t2, $t2, -WIDTH
 	sw   $t2, 4($t0)	# puffer.pos = 1 pixel above old puffer.pos
-	jal  unstamp_pufferfish	# Remove puffer from display
-	la   $t0, pufferfish	# Re-obtain puffer position after function call
-	lw   $t2, 4($t0)	# $t2 = new position
 	addi $t7, $gp, 256	# If new pos is at top of display, change its direction
 	bgt  $t2, $t7, update_piranha1
 	li   $t7, 2
@@ -518,18 +525,15 @@ update_piranha1: # Update piranha1
 	la   $t0, piranha1	# $t0 = *piranha1
 	lw   $t1, 0($t0)	# $t1 = piranha1.state
 	lw   $t2, 4($t0)	# $t2 = piranha1.pos
+	move $a0, $t2		# $a0 = original piranha.pos
 	
 	beq  $t1, 0 update_piranha2	# if piranha.state == 0, is invisible; skip it
 	beq  $t1, 1, move_piran1_left	# If piranha.state == 1, move it left
 					# Otherwise, move it right
 					
 	# Move Piranha1 Right
-	move $a0, $t2		# Store old position in $a0
 	addi $t2, $t2, 4
 	sw   $t2, 4($t0)	# piranha1.pos = 1 pixel right of old piranh1.pos
-	jal  unstamp_piranha	# Remove piranha from display 
-	la   $t0, piranha1	# Re-obtain piranha1 position after function call
-	lw   $t2, 4($t0)	# $t2 = new position
 	
 	# If new pos is at right of display, change its direction
 	addi $t7, $t2, 28	# $t7 = right-most pixel of piranha
@@ -541,15 +545,12 @@ update_piranha1: # Update piranha1
 	blt  $t8, $t7, update_piranha2 # if remainder is < WIDTH-4, don't change its direction
 	li   $t7, 1
 	sw   $t7, 0($t0) # Change state to 1 (left-facing)
+	jal  unstamp_piranha
 	j    update_piranha2
 	
 move_piran1_left: # Move Piranha1 Left
-	move $a0, $t2		# Store old position in $a0
 	addi $t2, $t2, -4
 	sw   $t2, 4($t0)	# piranha1.pos = 1 pixel left of old piranh1.pos
-	jal  unstamp_piranha	# Remove piranha from display 
-	la   $t0, piranha1	# Re-obtain piranha1 position after function call
-	lw   $t2, 4($t0)	# $t2 = new position
 	
 	# If new pos is at right of display, change its direction
 	addi $t7, $t2, -28	# $t7 = left-most pixel of piranha
@@ -560,23 +561,21 @@ move_piran1_left: # Move Piranha1 Left
 	bgtz  $t8, update_piranha2 # if remainder is > 0, don't change its direction
 	li   $t7, 2
 	sw   $t7, 0($t0) # Change state to 2 (right-facing)
+	jal  unstamp_piranha
 	
 update_piranha2: # Update piranha2
 	la   $t0, piranha2	# $t0 = *piranha2
 	lw   $t1, 0($t0)	# $t1 = piranha2.state
 	lw   $t2, 4($t0)	# $t2 = piranha2.pos
+	move $a0, $t2		# $a0 = original piranha.pos
 	
 	beq  $t1, 0 update_bubble1	# if piranha.state == 0, is invisible; skip it
 	beq  $t1, 1, move_piran2_left	# If piranha.state == 1, move it left
 					# Otherwise, move it right
 					
 	# Move Piranha2 Right
-	move $a0, $t2		# Store old position in $a0
 	addi $t2, $t2, 4
 	sw   $t2, 4($t0)	# piranha2.pos = 1 pixel right of old piranha.pos
-	jal  unstamp_piranha	# Remove piranha from display 
-	la   $t0, piranha2	# Re-obtain piranha2 position after function call
-	lw   $t2, 4($t0)	# $t2 = new position
 	
 	# If new pos is at right of display, change its direction
 	addi $t7, $t2, 28	# $t7 = right-most pixel of piranha
@@ -588,15 +587,13 @@ update_piranha2: # Update piranha2
 	blt  $t8, $t7, update_bubble1 # if remainder is < WIDTH-4, don't change its direction
 	li   $t7, 1
 	sw   $t7, 0($t0) # Change state to 1 (left-facing)
+	jal  unstamp_piranha
 	j    update_bubble1
 	
 move_piran2_left: # Move Piranha1 Left
-	move $a0, $t2		# Store old position in $a0
 	addi $t2, $t2, -4
 	sw   $t2, 4($t0)	# piranha2.pos = 1 pixel left of old piranha.pos
 	jal  unstamp_piranha	# Remove piranha from display 
-	la   $t0, piranha2	# Re-obtain piranha2 position after function call
-	lw   $t2, 4($t0)	# $t2 = new position
 	
 	# If new pos is at right of display, change its direction
 	addi $t7, $t2, -28	# $t7 = left-most pixel of piranha
@@ -607,6 +604,7 @@ move_piran2_left: # Move Piranha1 Left
 	bgtz  $t8, update_bubble1 # if remainder is > 0, don't change its direction
 	li   $t7, 2
 	sw   $t7, 0($t0) # Change state to 2 (right-facing)
+	jal  unstamp_piranha
 
 update_bubble1:	# Update State of Bubble1
 	la   $t0, bubble1	# $t0 = *bubble1
@@ -707,6 +705,8 @@ dc_check_puff: # Check collisions with pufferfish
 		
 		# Otherwise, crab has collided with puffer.
 		li   $s7, 1	# set alive/dead flag to dead
+		li   $t1, 3
+		sw   $t1, 4($s1) # crab.state = 3 (dead)
 		
 		# Don't check anything else, you're dead
 		j    dc_done
@@ -737,6 +737,8 @@ dc_check_piranhas: # Check collisions with piranhas
 			
 			# Otherwise, crab has collided with piranha.
 			li   $s7, 1	# set alive/dead flag to dead
+			li   $t1, 3
+			sw   $t1, 4($s1) # crab.state = 3 (dead)
 			
 			# Don't check anything else, you are dead
 			j    dc_done
@@ -1350,6 +1352,7 @@ stamp_crab:
 	lw $t6, 4($s1)		# $t6 = crab.state
 	
 	beq $t6, 1, crab_walk1	# if crab.state == 1, draw walk_1 sprite
+	beq $t6, 3, crab_dead	# if crab.state == 3, draw dead sprite
 	
 	# else, draw walk_0 sprite
 	sw $t1, -16($t0)
@@ -1503,6 +1506,86 @@ crab_walk1: # draw walk_1 sprite
 	sw $t2, -28($t0)
 	sw $t2, -24($t0)
 	sw $t2, -20($t0)
+	j crab_exit
+
+crab_dead: # draw dead sprite
+	addi $t0, $t0, WIDTH
+	addi $t0, $t0, WIDTH
+	sw $t2, -28($t0)
+	sw $t2, -24($t0)
+	sw $t2, -20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -32($t0)
+	sw $t2, -28($t0)
+	sw $t2, -24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -32($t0)
+	sw $t2, -28($t0)
+	sw $t2, 20($t0)
+	sw $t2, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -32($t0)
+	sw $t2, -28($t0)
+	sw $t2, -20($t0)
+	sw $t2, 24($t0)
+	sw $t2, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -32($t0)
+	sw $t2, -28($t0)
+	sw $t3, -24($t0)
+	sw $t2, -20($t0)
+	sw $t3, -8($t0)
+	sw $t3, 8($t0)
+	sw $t2, 24($t0)
+	sw $t2, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -32($t0)
+	sw $t2, -28($t0)
+	sw $t3, -24($t0)
+	sw $t2, -20($t0)
+	sw $t2, -12($t0)
+	sw $t3, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t3, 8($t0)
+	sw $t2, 12($t0)
+	sw $t3, 24($t0)
+	sw $t2, 28($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t2, -28($t0)
+	sw $t2, -24($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t2, 24($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -20($t0)
+	sw $t1, -16($t0)
+	sw $t2, -12($t0)
+	sw $t2, -8($t0)
+	sw $t2, -4($t0)
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 12($t0)
+	sw $t1, 16($t0)
+	sw $t1, 20($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t3, -8($t0)
+	sw $t3, -4($t0)
+	sw $t3, -0($t0)
+	sw $t3, 4($t0)
+	sw $t3, 8($t0)
+	sw $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -16($t0)
+	sw $t1, 16($t0)
 	
 crab_exit:
 	# Return to caller			
@@ -1770,12 +1853,14 @@ sp_loop:
 				# else, facing right
 			
 	# Stamp a right-facing piranha
-	addi $t0, $t0, -WIDTH
+	sw $s5, -16($t0)
 	sw $t1, -12($t0)
 	sw $t1, -8($t0)
 	sw $t1, -4($t0)	
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
+	sw $s5, -12($t0)
 	sw $t1, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
@@ -1785,8 +1870,10 @@ sp_loop:
 	sw $t2, 16($t0)
 	sw $t2, 20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
 	sw $t2, -24($t0)
+	sw $s5, -20($t0)
 	sw $t2, -16($t0)
 	sw $t2, -12($t0)
 	sw $t2, -8($t0)
@@ -1799,6 +1886,7 @@ sp_loop:
 	sw $t2, 20($t0)
 	sw $t2, 24($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
 	sw $t2, -20($t0)
@@ -1810,8 +1898,10 @@ sp_loop:
 	sw $t1, 4($t0)
 	sw $t1, 8($t0)
 	sw $t1, 12($t0)
+	sw $s5, 24($t0)
 	sw $t2, 28($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -28($t0)
 	sw $t1, -24($t0)
 	sw $t1, -20($t0)
 	sw $t1, -16($t0)
@@ -1824,6 +1914,7 @@ sp_loop:
 	sw $t1, 12($t0)
 	sw $t3, 16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
 	sw $t1, -20($t0)
@@ -1838,8 +1929,10 @@ sp_loop:
 	sw $t1, 16($t0)
 	sw $t3, 20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
+	sw $s5, -16($t0)
 	sw $t1, -12($t0)
 	sw $t1, -8($t0)
 	sw $t1, -4($t0)
@@ -1851,7 +1944,9 @@ sp_loop:
 	sw $t1, 20($t0)
 	sw $t1, 24($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
+	sw $s5, -12($t0)
 	sw $t1, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
@@ -1861,6 +1956,7 @@ sp_loop:
 	sw $t1, 16($t0)
 	sw $t1, 20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -16($t0)
 	sw $t2, -12($t0)
 	sw $t2, -8($t0)
 	sw $t1, -4($t0)
@@ -1870,6 +1966,7 @@ sp_loop:
 	sw $t1, 12($t0)
 	sw $t1, 16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -20($t0)
 	sw $t2, -16($t0)
 	sw $t2, -12($t0)
 	sw $t2, -8($t0)
@@ -1880,12 +1977,14 @@ sp_loop:
 	j sp_update
 				
 sp_left: # Stamp a left-facing piranha
-	addi $t0, $t0, -WIDTH
+	sw $s5, 16($t0)
 	sw $t1, 12($t0)
 	sw $t1, 8($t0)
 	sw $t1, 4($t0)	
 	addi $t0, $t0, -WIDTH
+	sw $s5, 32($t0)
 	sw $t1, 28($t0)
+	sw $s5, 12($t0)
 	sw $t1, 8($t0)
 	sw $t1, 4($t0)
 	sw $t1, 0($t0)
@@ -1895,8 +1994,10 @@ sp_left: # Stamp a left-facing piranha
 	sw $t2, -16($t0)
 	sw $t2, -20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 32($t0)
 	sw $t1, 28($t0)
 	sw $t2, 24($t0)
+	sw $s5, 20($t0)
 	sw $t2, 16($t0)
 	sw $t2, 12($t0)
 	sw $t2, 8($t0)
@@ -1909,6 +2010,7 @@ sp_left: # Stamp a left-facing piranha
 	sw $t2, -20($t0)
 	sw $t2, -24($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 32($t0)
 	sw $t1, 28($t0)
 	sw $t1, 24($t0)
 	sw $t2, 20($t0)
@@ -1920,8 +2022,10 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -4($t0)
 	sw $t1, -8($t0)
 	sw $t1, -12($t0)
+	sw $s5, -24($t0)
 	sw $t2, -28($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 28($t0)
 	sw $t1, 24($t0)
 	sw $t1, 20($t0)
 	sw $t1, 16($t0)
@@ -1934,6 +2038,7 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -12($t0)
 	sw $t3, -16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 32($t0)
 	sw $t1, 28($t0)
 	sw $t1, 24($t0)
 	sw $t1, 20($t0)
@@ -1948,6 +2053,7 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -16($t0)
 	sw $t3, -20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 32($t0)
 	sw $t1, 28($t0)
 	sw $t1, 24($t0)
 	sw $t1, 12($t0)
@@ -1961,7 +2067,9 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -20($t0)
 	sw $t1, -24($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 32($t0)
 	sw $t1, 28($t0)
+	sw $s5, 12($t0)
 	sw $t1, 8($t0)
 	sw $t1, 4($t0)
 	sw $t1, 0($t0)
@@ -1971,6 +2079,7 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -16($t0)
 	sw $t1, -20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 16($t0)
 	sw $t2, 12($t0)
 	sw $t2, 8($t0)
 	sw $t1, 4($t0)
@@ -1980,6 +2089,7 @@ sp_left: # Stamp a left-facing piranha
 	sw $t1, -12($t0)
 	sw $t1, -16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, 20($t0)
 	sw $t2, 16($t0)
 	sw $t2, 12($t0)
 	sw $t2, 8($t0)
@@ -2027,6 +2137,10 @@ stamp_pufferfish:
 	lw   $t0, 4($t8)	# $t0 = address of pixel
 	
 	# Color the pixels appropriately
+	sw $s5, -52($t0)
+	sw $s5, -48($t0)
+	sw $s5, -44($t0)
+	sw $s5, -40($t0)
 	sw $t1, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
@@ -2045,7 +2159,12 @@ stamp_pufferfish:
 	sw $t1, 28($t0)
 	sw $t1, 32($t0)
 	sw $t2, 36($t0)
+	sw $s5, 40($t0)
+	sw $s5, 44($t0)
+	sw $s5, 48($t0)
+	sw $s5, 52($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -36($t0)
 	sw $t1, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
@@ -2066,6 +2185,7 @@ stamp_pufferfish:
 	sw $t2, 36($t0)
 	sw $t2, 40($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -40($t0)
 	sw $t2, -36($t0)
 	sw $t1, -32($t0)
 	sw $t1, -28($t0)
@@ -2084,6 +2204,8 @@ stamp_pufferfish:
 	sw $t1, 24($t0)
 	sw $t1, 28($t0)
 	sw $t1, 32($t0)
+	sw $s5, 36($t0)
+	sw $s5, 40($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t2, -40($t0)
 	sw $t2, -36($t0)
@@ -2104,7 +2226,11 @@ stamp_pufferfish:
 	sw $t1, 24($t0)
 	sw $t1, 28($t0)
 	sw $t2, 32($t0)
+	sw $s5, 36($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -40($t0)
+	sw $s5, -36($t0)
+	sw $s5, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
 	sw $t1, -20($t0)
@@ -2122,6 +2248,7 @@ stamp_pufferfish:
 	sw $t1, 28($t0)
 	sw $t2, 32($t0)
 	sw $t2, 36($t0)
+	sw $s5, 40($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t2, -28($t0)
 	sw $t1, -24($t0)
@@ -2137,8 +2264,12 @@ stamp_pufferfish:
 	sw $t1, 16($t0)
 	sw $t1, 20($t0)
 	sw $t1, 24($t0)
+	sw $s5, 28($t0)
+	sw $s5, 32($t0)
+	sw $s5, 36($t0)
 	sw $t2, 40($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
 	sw $t2, -28($t0)
 	sw $t2, -24($t0)
 	sw $t1, -20($t0)
@@ -2154,9 +2285,12 @@ stamp_pufferfish:
 	sw $t1, 20($t0)
 	sw $t2, 24($t0)
 	sw $t2, 28($t0)
+	sw $s5, 40($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t2, -32($t0)
 	sw $t2, -28($t0)
+	sw $s5, -24($t0)
+	sw $s5, -20($t0)
 	sw $t1, -16($t0)
 	sw $t1, -12($t0)
 	sw $t1, -8($t0)
@@ -2166,8 +2300,13 @@ stamp_pufferfish:
 	sw $t1, 8($t0)
 	sw $t1, 12($t0)
 	sw $t1, 16($t0)
+	sw $s5, 20($t0)
+	sw $s5, 24($t0)
 	sw $t2, 28($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -32($t0)
+	sw $s5, -28($t0)
+	sw $s5, -20($t0)
 	sw $t2, -16($t0)
 	sw $t2, -12($t0)
 	sw $t1, -8($t0)
@@ -2177,20 +2316,33 @@ stamp_pufferfish:
 	sw $t1, 8($t0)
 	sw $t2, 12($t0)
 	sw $t2, 16($t0)
+	sw $s5, 20($t0)
+	sw $s5, 28($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t2, -20($t0)
 	sw $t2, -16($t0)
+	sw $s5, -12($t0)
+	sw $s5, -8($t0)
 	sw $t2, -4($t0)
 	sw $t2, 0($t0)
 	sw $t2, 4($t0)
+	sw $s5, 8($t0)
+	sw $s5, 12($t0)
 	sw $t2, 16($t0)
 	sw $t2, 20($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t2, -20($t0)
+	sw $s5, -16($t0)
+	sw $s5, -4($t0)
 	sw $t2, 0($t0)
+	sw $s5, 4($t0)
+	sw $s5, 16($t0)
 	sw $t2, 20($t0)
 	addi $t0, $t0, -WIDTH
+	sw $s5, -20($t0)
 	sw $t2, 0($t0)
+	sw $s5, 20($t0)
+	sw $s5, -WIDTH($t0)
 	addi $t0, $t0, WIDTH
 	addi $t0, $t0, WIDTH
 	addi $t0, $t0, WIDTH
@@ -2207,6 +2359,7 @@ stamp_pufferfish:
 	sw $t2, -48($t0)
 	sw $t2, -44($t0)
 	sw $t2, -40($t0)
+	sw $s5, -36($t0)
 	sw $t1, -32($t0)
 	sw $t1, -28($t0)
 	sw $t1, -24($t0)
@@ -2224,11 +2377,13 @@ stamp_pufferfish:
 	sw $t1, 24($t0)
 	sw $t1, 28($t0)
 	sw $t1, 32($t0)
+	sw $s5, 36($t0)
 	sw $t2, 40($t0)
 	sw $t2, 44($t0)
 	sw $t2, 48($t0)
 	sw $t2, 52($t0)
 	addi $t0, $t0, WIDTH
+	sw $s5, -52($t0)
 	sw $t2, -48($t0)
 	sw $t2, -44($t0)
 	sw $t2, -40($t0)
@@ -2254,6 +2409,7 @@ stamp_pufferfish:
 	sw $t2, 40($t0)
 	sw $t2, 44($t0)
 	sw $t2, 48($t0)
+	sw $s5, 52($t0)
 	addi $t0, $t0, WIDTH
 	sw $t2, -48($t0)
 	sw $t2, -44($t0)
@@ -2281,9 +2437,11 @@ stamp_pufferfish:
 	sw $t2, 44($t0)
 	sw $t2, 48($t0)
 	addi $t0, $t0, WIDTH
+	sw $s5, -48($t0)
 	sw $t2, -44($t0)
 	sw $t2, -40($t0)
 	sw $t2, -36($t0)
+	sw $s5, -32($t0)
 	sw $t3, -28($t0)
 	sw $t3, -24($t0)
 	sw $t3, -20($t0)
@@ -2299,12 +2457,16 @@ stamp_pufferfish:
 	sw $t3, 20($t0)
 	sw $t3, 24($t0)
 	sw $t3, 28($t0)
+	sw $s5, 32($t0)
 	sw $t2, 36($t0)
 	sw $t2, 40($t0)
 	sw $t2, 44($t0)
+	sw $s5, 48($t0)
 	addi $t0, $t0, WIDTH
 	sw $t2, -44($t0)
 	sw $t2, -40($t0)
+	sw $s5, -36($t0)
+	sw $s5, -28($t0)
 	sw $t3, -24($t0)
 	sw $t3, -20($t0)
 	sw $t3, -16($t0)
@@ -2318,10 +2480,14 @@ stamp_pufferfish:
 	sw $t3, 16($t0)
 	sw $t3, 20($t0)
 	sw $t3, 24($t0)
+	sw $s5, 28($t0)
+	sw $s5, 36($t0)
 	sw $t2, 40($t0)
 	sw $t2, 44($t0)
 	addi $t0, $t0, WIDTH
 	sw $t2, -44($t0)
+	sw $s5, -40($t0)
+	sw $s5, -32($t0)
 	sw $t4, -28($t0)
 	sw $t4, -24($t0)
 	sw $t3, -20($t0)
@@ -2337,9 +2503,15 @@ stamp_pufferfish:
 	sw $t3, 20($t0)
 	sw $t4, 24($t0)
 	sw $t4, 28($t0)
+	sw $s5, 32($t0)
+	sw $s5, 40($t0)
 	sw $t2, 44($t0)
 	addi $t0, $t0, WIDTH
+	sw $s5, -44($t0)
 	sw $t4, -32($t0)
+	sw $s5, -28($t0)
+	sw $s5, -24($t0)
+	sw $s5, -20($t0)
 	sw $t3, -16($t0)
 	sw $t3, -12($t0)
 	sw $t3, -8($t0)
@@ -2349,8 +2521,14 @@ stamp_pufferfish:
 	sw $t3, 8($t0)
 	sw $t3, 12($t0)
 	sw $t3, 16($t0)
+	sw $s5, 20($t0)
+	sw $s5, 24($t0)
+	sw $s5, 28($t0)
 	sw $t4, 32($t0)
+	sw $s5, 44($t0)
 	addi $t0, $t0, WIDTH
+	sw $s5, -32($t0)
+	sw $s5, -16($t0)
 	sw $t4, -12($t0)
 	sw $t3, -8($t0)
 	sw $t3, -4($t0)
@@ -2358,9 +2536,21 @@ stamp_pufferfish:
 	sw $t3, 4($t0)
 	sw $t3, 8($t0)
 	sw $t4, 12($t0)
+	sw $s5, 16($t0)
+	sw $s5, 32($t0)
 	addi $t0, $t0, WIDTH
 	sw $t4, -16($t0)
+	sw $s5, -12($t0)
+	sw $s5, -8($t0)
+	sw $s5, -4($t0)
+	sw $s5, 0($t0)
+	sw $s5, 4($t0)
+	sw $s5, 8($t0)
+	sw $s5, 12($t0)
 	sw $t4, 16($t0)
+	addi $t0, $t0, WIDTH
+	sw $s5, -16($t0)
+	sw $s5, 16($t0)
 
 spuff_done:
 	# Return to caller
@@ -2864,35 +3054,6 @@ display_score:
 #	UN-PAINTING FUNCTIONS						#
 #########################################################################
 
-# _get_bg_color():
-#	Returns $v0 = bg_color
-#	Given the values in the struct `world`, determines the 
-#	correct background color, stores it in $v0
-#	$t3: world.darkness
-#	[CURRENTLY UNUSED, KEEPING IT FOR BACKUP]
-_get_bg_color:
-	lw   $t3, 4($s0)		# $t3 = world.darkness
-	beq  $t3, 0, gbc_level_0	# branch if world.darkness == 0
-	beq  $t3, 1, gbc_level_1	# branch if world.darkness == 1
-	beq  $t3, 2, gbc_level_2	# branch if world.darkness == 2
-	beq  $t3, 3, gbc_level_3	# branch if world.darkness == 3
-	li   $v0, SEA_COL_4	# $v0 = bg color 4
-	j    gbc_exit
-gbc_level_0:
-	li   $v0, SEA_COL_0	# $v0 = bg color 0
-	j    gbc_exit
-gbc_level_1:
-	li   $v0, SEA_COL_1	# $v0 = bg color 1
-	j    gbc_exit
-gbc_level_2:
-	li   $v0, SEA_COL_2	# $v0 = bg color 2
-	j    gbc_exit
-gbc_level_3:
-	li   $v0, SEA_COL_3	# $v0 = bg color 3
-gbc_exit:
-	jr   $ra
-# ---------------------------------------------------------------------------------------
-
 
 # unstamp_crab():
 # 	Removes the crab from the display at the position in $s2
@@ -3141,7 +3302,6 @@ unstamp_piranha:
 	move $t1, $s5		# Put bg colour into $t1
 	
 	# Color the pixels appropriately
-	addi $t0, $t0, -WIDTH
 	sw $t1, -12($t0)
 	sw $t1, -8($t0)
 	sw $t1, -4($t0)
@@ -3277,354 +3437,6 @@ unstamp_piranha:
 				
 	# Return to caller
 	jr   $ra
-# ---------------------------------------------------------------------------------------
-
-
-# unstamp_pufferfish($a0 = *pixel):
-# 	Removes pufferfish from the display at $a0
-#	$t0: puffer_position, $t1: bg_color
-unstamp_pufferfish:
-	move $t0, $a0		# Put pufferfish pos into $t0
-	move $t1, $s5		# Put bg colour into $t1
-	
-	# Color the pixels appropriately
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	sw $t1, 36($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	sw $t1, 36($t0)
-	sw $t1, 40($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -36($t0)
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -40($t0)
-	sw $t1, -36($t0)
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	sw $t1, 36($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 40($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 28($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -20($t0)
-	sw $t1, 0($t0)
-	sw $t1, 20($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, 0($t0)
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	addi $t0, $t0, WIDTH
-	sw $t1, -52($t0)
-	sw $t1, -48($t0)
-	sw $t1, -44($t0)
-	sw $t1, -40($t0)
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	sw $t1, 40($t0)
-	sw $t1, 44($t0)
-	sw $t1, 48($t0)
-	sw $t1, 52($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -48($t0)
-	sw $t1, -44($t0)
-	sw $t1, -40($t0)
-	sw $t1, -36($t0)
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	sw $t1, 36($t0)
-	sw $t1, 40($t0)
-	sw $t1, 44($t0)
-	sw $t1, 48($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -48($t0)
-	sw $t1, -44($t0)
-	sw $t1, -40($t0)
-	sw $t1, -36($t0)
-	sw $t1, -32($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 32($t0)
-	sw $t1, 36($t0)
-	sw $t1, 40($t0)
-	sw $t1, 44($t0)
-	sw $t1, 48($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -44($t0)
-	sw $t1, -40($t0)
-	sw $t1, -36($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 36($t0)
-	sw $t1, 40($t0)
-	sw $t1, 44($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -44($t0)
-	sw $t1, -40($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 40($t0)
-	sw $t1, 44($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -44($t0)
-	sw $t1, -28($t0)
-	sw $t1, -24($t0)
-	sw $t1, -20($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 20($t0)
-	sw $t1, 24($t0)
-	sw $t1, 28($t0)
-	sw $t1, 44($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -32($t0)
-	sw $t1, -16($t0)
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	sw $t1, 16($t0)
-	sw $t1, 32($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -12($t0)
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	sw $t1, 8($t0)
-	sw $t1, 12($t0)
-	addi $t0, $t0, WIDTH
-	sw $t1, -16($t0)
-	sw $t1, 16($t0)
-	
-	# Return to caller
-	jr $ra
 # ---------------------------------------------------------------------------------------
 
 
