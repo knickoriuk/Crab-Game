@@ -96,7 +96,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_seahorse()`
  - `stamp_bubble()`
  - `stamp_stars()`
- - `display_score()`
+ - `display_score($a0=*position)`
+ - `_display_number($a0=*position, $a1=number)`
 
 ### Un-Painting Functions:
  - `unstamp_crab()`
@@ -118,8 +119,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Make Level 2~~
  - [x] ~~Falling off screen leads to game over~~
  - [x] ~~Add dead crab sprite~~
- - [ ] Add 3x5 sprites for numbers 0-9
- - [ ] Show score on screen
+ - [x] ~~Add 3x5 sprites for numbers 0-9~~
+ - [x] ~~Show score on screen~~
  - [ ] Fail condition / Game over screen
  - [ ] Win condition / Win screen
  - [ ] Make Level 3
