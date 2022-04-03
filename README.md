@@ -30,9 +30,6 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
    - +0: Position - Address of pixel
    - +4: State - {0=walk_0, 1=walk_1, 2=jump, 3=dead}
    - +8: Jump timer - counts frames of rising, before falling down
- - `world`:
-   - +0: Level - {0,1,2,3,4,5,6,7,8,9}
-   - +4: Darkness - {9,8,7,6,5,4,3,2,1,0}
  - `clam`:
    - +0: State - {0=invisible, 1=open, 2=closed}
    - +4: Position - Address of pixel
@@ -64,7 +61,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
    - etc.
 
 ### Global Registers:
- - `$s0`: Pointer to `world` struct
+ - `$s0`: Level - {9,8,7,6,5,4,3,2,1,0}
  - `$s1`: Pointer to `crab` struct
  - `$s2`: Last crab position
  - `$s3`: Score
@@ -128,4 +125,3 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
 
 ## Ideas: 
  - Play a two or three tone sound effect when picking up sea stars/clams/sea horse, and when dying
- - Could get rid of `world` struct altogether, replacing it with $s0
