@@ -49,12 +49,17 @@
 .eqv	DEATH_PAUSE	1024		# Sleep duration after death
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
-.eqv	SEA_COL_4	0x000b3e8a	# Sea colour, darkest
-.eqv	SEA_COL_3	0x000d47a1	#	:
-.eqv	SEA_COL_2	0x001052b5	#	:
-.eqv	SEA_COL_1	0x00125dcc	#	:
-.eqv	SEA_COL_0	0x001467db	# Sea colour, lightest
-.eqv	DARKNESS	0x00050505	# amount to darken colours by, per level
+.eqv	SEA_COL_9	0x0015298D	# Sea colour, darkest
+.eqv	SEA_COL_8	0x00133396	#	:
+.eqv	SEA_COL_7	0x00103E9E	#	:
+.eqv	SEA_COL_6	0x000E48A7	#	:
+.eqv	SEA_COL_5	0x000C53B0	#	:
+.eqv	SEA_COL_4	0x00095DB8	#	:
+.eqv	SEA_COL_3	0x000768C1	#	:
+.eqv	SEA_COL_2	0x000572CA	#	:
+.eqv	SEA_COL_1	0x00027DD2	# 	:
+.eqv	SEA_COL_0	0x000087DB	# Sea colour, lightest
+.eqv	DARKNESS	0x00060302	# amount to darken colours by, per level
 .eqv	NUM_STARS	8		# Maximum number of sea stars		
 .eqv	NUM_PLATFORMS	6		# Maximum number of platforms
 .eqv	CRAB_UP_DIST	7		# Duration of crab jump ascension
@@ -78,7 +83,7 @@ crab:		.space		12
 world:		.space		8
 # struct world {
 #	int level:	# 0,1,2,3,4,5,6... However many I end up making
-#	int darkness:	# 4, 3, 2, 1, 0
+#	int darkness:	# 9,8,7,6,5,4,3,2,1,0
 # }
 clam:		.space		8
 # struct clam {
@@ -133,7 +138,7 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 main:	la   $s0, world
 	la   $s1, crab
 	li   $s3, 0
-	li   $s5, SEA_COL_4
+	li   $s5, SEA_COL_9
 	li   $s6, 0
 	li   $s7, 0
 	
@@ -214,10 +219,8 @@ update_display2:
 	syscall
 
 	li   $s5, 0		# set bg color to black
-	jal generate_background
-	addi $a0, $gp, 15456	# $a0 = *position for scoreboard
-	jal  display_score
-	# TODO: Show game over screen
+	jal  generate_background
+	jal  display_gameover
 	
 game_over_loop:	
 	li   $a0, SLEEP_DUR	# Sleep a bit
@@ -924,8 +927,8 @@ gen_level_0:
 	# world data
 	li   $t0, 0
 	sw   $t0, 0($s0)	# world.level = 0
-	li   $t0, 4
-	sw   $t0, 4($s0)	# world.darkness = 4
+	li   $t0, 9
+	sw   $t0, 4($s0)	# world.darkness = 9
 
 	# crab data
 	addi $t0, $gp, INIT_POS
@@ -1047,6 +1050,11 @@ gen_level_select:
 	# TODO: WIN CONDITION: Deal with the last level differently
 
 gen_level_1: ##### LEVEL ONE #####
+	# world data
+	li   $t0, 8
+	sw   $t0, 4($s0)	# world.darkness = 8
+	li   $s5, SEA_COL_8	# Store current BG color
+
 	# crab data
 	lw   $t0, 0($s1)
 	add  $t0, $t0, 28928	# Move crab down to bottom of display
@@ -1110,9 +1118,9 @@ gen_level_1: ##### LEVEL ONE #####
 	
 gen_level_2: ##### LEVEL TWO #####
 	# world data
-	li   $t0, 3
-	sw   $t0, 4($s0)	# world.darkness = 3
-	li   $s5, SEA_COL_3	# Store current BG color
+	li   $t0, 7
+	sw   $t0, 4($s0)	# world.darkness = 7
+	li   $s5, SEA_COL_7	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -1336,8 +1344,8 @@ splat_exit:
 # 	"Stamps" the crab onto the display at crab.position
 #	$t0: pixel_address, $t1-$t4: colours, $t5: world.darkness, $t6: temp
 stamp_crab:
-	li $t1, 0x00cc552d	# $t1 = crab base
-	li $t2, 0x00a33615	# $t2 = crab shell
+	li $t1, 0x00e35e32	# $t1 = crab base
+	li $t2, 0x00b0351c	# $t2 = crab shell
 	li $t3, 0x00ffffff	# $t3 = white
 	li $t4, 0x00000000	# $t4 = black
 	
@@ -2970,7 +2978,7 @@ sb_exit:
 #	$t6: world.darkness, $t7: temp, $t8: index
 stamp_stars:
 	li   $t1, 0x00ffeb3b	# $t1 = star colour
-	li   $t2, 0x00502800	# $t2 = glow amount
+	li   $t2, 0x00402000	# $t2 = glow amount
 	
 	# Determine darkening factor
 	lw   $t6, 4($s0)	# $t6 = world.darkness
@@ -3351,6 +3359,725 @@ _display_9: # Print a Nine
 _display_done:
 	jr   $ra
 # ---------------------------------------------------------------------------------------
+
+
+# display_gameover():
+#	Adds "GAME OVER" to the display.
+#	Assumes crab.state == 3 (dead) and background is set to black
+#	$t0: colour & temp
+display_gameover:
+	li   $t0, 0x00ffffff	# $t0 = white
+	
+	# "GAME"
+	sw   $t0, 9792($gp)	# 1st Row
+	sw   $t0, 9796($gp)
+	sw   $t0, 9800($gp)
+	sw   $t0, 9804($gp)
+	sw   $t0, 9808($gp)
+	sw   $t0, 9832($gp)
+	sw   $t0, 9836($gp)
+	sw   $t0, 9840($gp)
+	sw   $t0, 9864($gp)
+	sw   $t0, 9888($gp)
+	sw   $t0, 9904($gp)
+	sw   $t0, 9908($gp)
+	sw   $t0, 9912($gp)
+	sw   $t0, 9916($gp)
+	sw   $t0, 9920($gp)
+	sw   $t0, 9924($gp)
+	sw   $t0, 9928($gp)
+	sw   $t0, 9932($gp)
+	sw   $t0, 10040($gp)	# 2nd Row
+	sw   $t0, 10044($gp)
+	sw   $t0, 10048($gp)
+	sw   $t0, 10052($gp)
+	sw   $t0, 10056($gp)
+	sw   $t0, 10060($gp)
+	sw   $t0, 10064($gp)
+	sw   $t0, 10068($gp)
+	sw   $t0, 10084($gp)
+	sw   $t0, 10088($gp)
+	sw   $t0, 10092($gp)
+	sw   $t0, 10096($gp)
+	sw   $t0, 10100($gp)
+	sw   $t0, 10116($gp)
+	sw   $t0, 10120($gp)
+	sw   $t0, 10144($gp)
+	sw   $t0, 10148($gp)
+	sw   $t0, 10156($gp)
+	sw   $t0, 10160($gp)
+	sw   $t0, 10164($gp)
+	sw   $t0, 10168($gp)
+	sw   $t0, 10172($gp)
+	sw   $t0, 10176($gp)
+	sw   $t0, 10180($gp)
+	sw   $t0, 10184($gp)
+	sw   $t0, 10188($gp)
+	sw   $t0, 10292($gp)	# 3rd Row
+	sw   $t0, 10296($gp)
+	sw   $t0, 10300($gp)
+	sw   $t0, 10320($gp)
+	sw   $t0, 10324($gp)
+	sw   $t0, 10336($gp)
+	sw   $t0, 10340($gp)
+	sw   $t0, 10344($gp)
+	sw   $t0, 10348($gp)
+	sw   $t0, 10352($gp)
+	sw   $t0, 10356($gp)
+	sw   $t0, 10360($gp)
+	sw   $t0, 10372($gp)
+	sw   $t0, 10376($gp)
+	sw   $t0, 10380($gp)
+	sw   $t0, 10396($gp)
+	sw   $t0, 10400($gp)
+	sw   $t0, 10404($gp)
+	sw   $t0, 10412($gp)
+	sw   $t0, 10416($gp)
+	sw   $t0, 10444($gp)
+	sw   $t0, 10548($gp)	# 4th Row
+	sw   $t0, 10552($gp)
+	sw   $t0, 10592($gp)
+	sw   $t0, 10596($gp)
+	sw   $t0, 10600($gp)
+	sw   $t0, 10604($gp)
+	sw   $t0, 10608($gp)
+	sw   $t0, 10612($gp)
+	sw   $t0, 10616($gp)
+	sw   $t0, 10628($gp)
+	sw   $t0, 10632($gp)
+	sw   $t0, 10636($gp)
+	sw   $t0, 10652($gp)
+	sw   $t0, 10656($gp)
+	sw   $t0, 10660($gp)
+	sw   $t0, 10668($gp)
+	sw   $t0, 10672($gp)
+	sw   $t0, 10804($gp)	# 5th Row
+	sw   $t0, 10808($gp)
+	sw   $t0, 10824($gp)
+	sw   $t0, 10828($gp)
+	sw   $t0, 10832($gp)
+	sw   $t0, 10836($gp)
+	sw   $t0, 10844($gp)
+	sw   $t0, 10848($gp)
+	sw   $t0, 10852($gp)
+	sw   $t0, 10868($gp)
+	sw   $t0, 10872($gp)
+	sw   $t0, 10876($gp)
+	sw   $t0, 10884($gp)
+	sw   $t0, 10888($gp)
+	sw   $t0, 10892($gp)
+	sw   $t0, 10896($gp)
+	sw   $t0, 10904($gp)
+	sw   $t0, 10908($gp)
+	sw   $t0, 10912($gp)
+	sw   $t0, 10916($gp)
+	sw   $t0, 10924($gp)
+	sw   $t0, 10928($gp)
+	sw   $t0, 10932($gp)
+	sw   $t0, 10936($gp)
+	sw   $t0, 10940($gp)
+	sw   $t0, 10944($gp)
+	sw   $t0, 11060($gp)	# 6th Row
+	sw   $t0, 11064($gp)
+	sw   $t0, 11080($gp)
+	sw   $t0, 11084($gp)
+	sw   $t0, 11088($gp)
+	sw   $t0, 11092($gp)
+	sw   $t0, 11100($gp)
+	sw   $t0, 11104($gp)
+	sw   $t0, 11128($gp)
+	sw   $t0, 11132($gp)
+	sw   $t0, 11140($gp)
+	sw   $t0, 11144($gp)
+	sw   $t0, 11148($gp)
+	sw   $t0, 11152($gp)
+	sw   $t0, 11160($gp)
+	sw   $t0, 11164($gp)
+	sw   $t0, 11168($gp)
+	sw   $t0, 11172($gp)
+	sw   $t0, 11180($gp)
+	sw   $t0, 11184($gp)
+	sw   $t0, 11316($gp)	# 7th Row
+	sw   $t0, 11320($gp)
+	sw   $t0, 11324($gp)
+	sw   $t0, 11344($gp)
+	sw   $t0, 11348($gp)
+	sw   $t0, 11356($gp)
+	sw   $t0, 11360($gp)
+	sw   $t0, 11384($gp)
+	sw   $t0, 11388($gp)
+	sw   $t0, 11396($gp)
+	sw   $t0, 11400($gp)
+	sw   $t0, 11404($gp)
+	sw   $t0, 11408($gp)
+	sw   $t0, 11412($gp)
+	sw   $t0, 11416($gp)
+	sw   $t0, 11420($gp)
+	sw   $t0, 11424($gp)
+	sw   $t0, 11428($gp)
+	sw   $t0, 11436($gp)
+	sw   $t0, 11440($gp)
+	sw   $t0, 11468($gp)
+	sw   $t0, 11572($gp)	# 8th Row
+	sw   $t0, 11576($gp)
+	sw   $t0, 11580($gp)
+	sw   $t0, 11584($gp)
+	sw   $t0, 11588($gp)
+	sw   $t0, 11592($gp)
+	sw   $t0, 11596($gp)
+	sw   $t0, 11600($gp)
+	sw   $t0, 11604($gp)
+	sw   $t0, 11612($gp)
+	sw   $t0, 11616($gp)
+	sw   $t0, 11620($gp)
+	sw   $t0, 11624($gp)
+	sw   $t0, 11628($gp)
+	sw   $t0, 11632($gp)
+	sw   $t0, 11636($gp)
+	sw   $t0, 11640($gp)
+	sw   $t0, 11644($gp)
+	sw   $t0, 11652($gp)
+	sw   $t0, 11656($gp)
+	sw   $t0, 11660($gp)
+	sw   $t0, 11664($gp)
+	sw   $t0, 11668($gp)
+	sw   $t0, 11672($gp)
+	sw   $t0, 11676($gp)
+	sw   $t0, 11680($gp)
+	sw   $t0, 11684($gp)
+	sw   $t0, 11692($gp)
+	sw   $t0, 11696($gp)
+	sw   $t0, 11700($gp)
+	sw   $t0, 11704($gp)
+	sw   $t0, 11708($gp)
+	sw   $t0, 11712($gp)
+	sw   $t0, 11716($gp)
+	sw   $t0, 11720($gp)
+	sw   $t0, 11724($gp)
+	sw   $t0, 11828($gp)	# 9th Row
+	sw   $t0, 11832($gp)
+	sw   $t0, 11836($gp)
+	sw   $t0, 11840($gp)
+	sw   $t0, 11844($gp)
+	sw   $t0, 11848($gp)
+	sw   $t0, 11852($gp)
+	sw   $t0, 11856($gp)
+	sw   $t0, 11860($gp)
+	sw   $t0, 11868($gp)
+	sw   $t0, 11872($gp)
+	sw   $t0, 11876($gp)
+	sw   $t0, 11880($gp)
+	sw   $t0, 11884($gp)
+	sw   $t0, 11888($gp)
+	sw   $t0, 11892($gp)
+	sw   $t0, 11896($gp)
+	sw   $t0, 11900($gp)
+	sw   $t0, 11908($gp)
+	sw   $t0, 11912($gp)
+	sw   $t0, 11920($gp)
+	sw   $t0, 11924($gp)
+	sw   $t0, 11928($gp)
+	sw   $t0, 11936($gp)
+	sw   $t0, 11940($gp)
+	sw   $t0, 11948($gp)
+	sw   $t0, 11952($gp)
+	sw   $t0, 11956($gp)
+	sw   $t0, 11960($gp)
+	sw   $t0, 11964($gp)
+	sw   $t0, 11968($gp)
+	sw   $t0, 11972($gp)
+	sw   $t0, 11976($gp)
+	sw   $t0, 11980($gp)
+	sw   $t0, 12084($gp)	# 10th Row
+	sw   $t0, 12088($gp)
+	sw   $t0, 12092($gp)
+	sw   $t0, 12096($gp)
+	sw   $t0, 12100($gp)
+	sw   $t0, 12104($gp)
+	sw   $t0, 12108($gp)
+	sw   $t0, 12112($gp)
+	sw   $t0, 12116($gp)
+	sw   $t0, 12124($gp)
+	sw   $t0, 12128($gp)
+	sw   $t0, 12152($gp)
+	sw   $t0, 12156($gp)
+	sw   $t0, 12164($gp)
+	sw   $t0, 12168($gp)
+	sw   $t0, 12180($gp)
+	sw   $t0, 12192($gp)
+	sw   $t0, 12196($gp)
+	sw   $t0, 12204($gp)
+	sw   $t0, 12208($gp)
+	sw   $t0, 12212($gp)
+	sw   $t0, 12216($gp)
+	sw   $t0, 12220($gp)
+	sw   $t0, 12224($gp)
+	sw   $t0, 12228($gp)
+	sw   $t0, 12232($gp)
+	sw   $t0, 12236($gp)
+	sw   $t0, 12344($gp)	# 11th Row
+	sw   $t0, 12348($gp)
+	sw   $t0, 12352($gp)
+	sw   $t0, 12356($gp)
+	sw   $t0, 12360($gp)
+	sw   $t0, 12364($gp)
+	sw   $t0, 12368($gp)
+	sw   $t0, 12380($gp)
+	sw   $t0, 12384($gp)
+	sw   $t0, 12408($gp)
+	sw   $t0, 12412($gp)
+	sw   $t0, 12420($gp)
+	sw   $t0, 12424($gp)
+	sw   $t0, 12428($gp)
+	sw   $t0, 12444($gp)
+	sw   $t0, 12448($gp)
+	sw   $t0, 12452($gp)
+	sw   $t0, 12464($gp)
+	sw   $t0, 12468($gp)
+	sw   $t0, 12472($gp)
+	sw   $t0, 12476($gp)
+	sw   $t0, 12480($gp)
+	sw   $t0, 12484($gp)
+	sw   $t0, 12488($gp)
+
+	# "OVER"
+	sw   $t0, 13120($gp)	# 1st Row
+	sw   $t0, 13124($gp)
+	sw   $t0, 13128($gp)
+	sw   $t0, 13148($gp)
+	sw   $t0, 13152($gp)
+	sw   $t0, 13176($gp)
+	sw   $t0, 13180($gp)
+	sw   $t0, 13192($gp)
+	sw   $t0, 13196($gp)
+	sw   $t0, 13200($gp)
+	sw   $t0, 13204($gp)
+	sw   $t0, 13208($gp)
+	sw   $t0, 13212($gp)
+	sw   $t0, 13216($gp)
+	sw   $t0, 13220($gp)
+	sw   $t0, 13232($gp)
+	sw   $t0, 13236($gp)
+	sw   $t0, 13240($gp)
+	sw   $t0, 13244($gp)
+	sw   $t0, 13248($gp)
+	sw   $t0, 13368($gp)	# 2nd Row
+	sw   $t0, 13372($gp)
+	sw   $t0, 13376($gp)
+	sw   $t0, 13380($gp)
+	sw   $t0, 13384($gp)
+	sw   $t0, 13388($gp)
+	sw   $t0, 13392($gp)
+	sw   $t0, 13404($gp)
+	sw   $t0, 13408($gp)
+	sw   $t0, 13432($gp)
+	sw   $t0, 13436($gp)
+	sw   $t0, 13444($gp)
+	sw   $t0, 13448($gp)
+	sw   $t0, 13452($gp)
+	sw   $t0, 13456($gp)
+	sw   $t0, 13460($gp)
+	sw   $t0, 13464($gp)
+	sw   $t0, 13468($gp)
+	sw   $t0, 13472($gp)
+	sw   $t0, 13476($gp)
+	sw   $t0, 13484($gp)
+	sw   $t0, 13488($gp)
+	sw   $t0, 13492($gp)
+	sw   $t0, 13496($gp)
+	sw   $t0, 13500($gp)
+	sw   $t0, 13504($gp)
+	sw   $t0, 13508($gp)
+	sw   $t0, 13512($gp)
+	sw   $t0, 13620($gp)	# 3rd Row
+	sw   $t0, 13624($gp)
+	sw   $t0, 13628($gp)
+	sw   $t0, 13644($gp)
+	sw   $t0, 13648($gp)
+	sw   $t0, 13652($gp)
+	sw   $t0, 13660($gp)
+	sw   $t0, 13664($gp)
+	sw   $t0, 13688($gp)
+	sw   $t0, 13692($gp)
+	sw   $t0, 13700($gp)
+	sw   $t0, 13704($gp)
+	sw   $t0, 13732($gp)
+	sw   $t0, 13740($gp)
+	sw   $t0, 13744($gp)
+	sw   $t0, 13764($gp)
+	sw   $t0, 13768($gp)
+	sw   $t0, 13772($gp)
+	sw   $t0, 13876($gp)	# 4th Row
+	sw   $t0, 13880($gp)
+	sw   $t0, 13904($gp)
+	sw   $t0, 13908($gp)
+	sw   $t0, 13916($gp)
+	sw   $t0, 13920($gp)
+	sw   $t0, 13944($gp)
+	sw   $t0, 13948($gp)
+	sw   $t0, 13956($gp)
+	sw   $t0, 13960($gp)
+	sw   $t0, 13996($gp)
+	sw   $t0, 14000($gp)
+	sw   $t0, 14024($gp)
+	sw   $t0, 14028($gp)
+	sw   $t0, 14132($gp)	# 5th Row
+	sw   $t0, 14136($gp)
+	sw   $t0, 14160($gp)
+	sw   $t0, 14164($gp)
+	sw   $t0, 14172($gp)
+	sw   $t0, 14176($gp)
+	sw   $t0, 14180($gp)
+	sw   $t0, 14196($gp)
+	sw   $t0, 14200($gp)
+	sw   $t0, 14204($gp)
+	sw   $t0, 14212($gp)
+	sw   $t0, 14216($gp)
+	sw   $t0, 14220($gp)
+	sw   $t0, 14224($gp)
+	sw   $t0, 14228($gp)
+	sw   $t0, 14232($gp)
+	sw   $t0, 14252($gp)
+	sw   $t0, 14256($gp)
+	sw   $t0, 14280($gp)
+	sw   $t0, 14284($gp)
+	sw   $t0, 14388($gp)	# 6th Row
+	sw   $t0, 14392($gp)
+	sw   $t0, 14416($gp)
+	sw   $t0, 14420($gp)
+	sw   $t0, 14428($gp)
+	sw   $t0, 14432($gp)
+	sw   $t0, 14436($gp)
+	sw   $t0, 14452($gp)
+	sw   $t0, 14456($gp)
+	sw   $t0, 14460($gp)
+	sw   $t0, 14468($gp)
+	sw   $t0, 14472($gp)
+	sw   $t0, 14508($gp)
+	sw   $t0, 14512($gp)
+	sw   $t0, 14532($gp)
+	sw   $t0, 14536($gp)
+	sw   $t0, 14540($gp)
+	sw   $t0, 14644($gp)	# 7th Row
+	sw   $t0, 14648($gp)
+	sw   $t0, 14652($gp)
+	sw   $t0, 14668($gp)
+	sw   $t0, 14672($gp)
+	sw   $t0, 14676($gp)
+	sw   $t0, 14684($gp)
+	sw   $t0, 14688($gp)
+	sw   $t0, 14692($gp)
+	sw   $t0, 14696($gp)
+	sw   $t0, 14704($gp)
+	sw   $t0, 14708($gp)
+	sw   $t0, 14712($gp)
+	sw   $t0, 14716($gp)
+	sw   $t0, 14724($gp)
+	sw   $t0, 14728($gp)
+	sw   $t0, 14756($gp)
+	sw   $t0, 14764($gp)
+	sw   $t0, 14768($gp)
+	sw   $t0, 14772($gp)
+	sw   $t0, 14776($gp)
+	sw   $t0, 14780($gp)
+	sw   $t0, 14784($gp)
+	sw   $t0, 14788($gp)
+	sw   $t0, 14792($gp)
+	sw   $t0, 14796($gp)
+	sw   $t0, 14900($gp)	# 8th Row
+	sw   $t0, 14904($gp)
+	sw   $t0, 14908($gp)
+	sw   $t0, 14912($gp)
+	sw   $t0, 14916($gp)
+	sw   $t0, 14920($gp)
+	sw   $t0, 14924($gp)
+	sw   $t0, 14928($gp)
+	sw   $t0, 14932($gp)
+	sw   $t0, 14944($gp)
+	sw   $t0, 14948($gp)
+	sw   $t0, 14952($gp)
+	sw   $t0, 14956($gp)
+	sw   $t0, 14960($gp)
+	sw   $t0, 14964($gp)
+	sw   $t0, 14968($gp)
+	sw   $t0, 14980($gp)
+	sw   $t0, 14984($gp)
+	sw   $t0, 14988($gp)
+	sw   $t0, 14992($gp)
+	sw   $t0, 14996($gp)
+	sw   $t0, 15000($gp)
+	sw   $t0, 15004($gp)
+	sw   $t0, 15008($gp)
+	sw   $t0, 15012($gp)
+	sw   $t0, 15020($gp)
+	sw   $t0, 15024($gp)
+	sw   $t0, 15028($gp)
+	sw   $t0, 15032($gp)
+	sw   $t0, 15036($gp)
+	sw   $t0, 15040($gp)
+	sw   $t0, 15044($gp)
+	sw   $t0, 15048($gp)
+	sw   $t0, 15156($gp)	# 9th Row
+	sw   $t0, 15160($gp)
+	sw   $t0, 15164($gp)
+	sw   $t0, 15168($gp)
+	sw   $t0, 15172($gp)
+	sw   $t0, 15176($gp)
+	sw   $t0, 15180($gp)
+	sw   $t0, 15184($gp)
+	sw   $t0, 15188($gp)
+	sw   $t0, 15200($gp)
+	sw   $t0, 15204($gp)
+	sw   $t0, 15208($gp)
+	sw   $t0, 15212($gp)
+	sw   $t0, 15216($gp)
+	sw   $t0, 15220($gp)
+	sw   $t0, 15224($gp)
+	sw   $t0, 15236($gp)
+	sw   $t0, 15240($gp)
+	sw   $t0, 15244($gp)
+	sw   $t0, 15248($gp)
+	sw   $t0, 15252($gp)
+	sw   $t0, 15256($gp)
+	sw   $t0, 15260($gp)
+	sw   $t0, 15264($gp)
+	sw   $t0, 15268($gp)
+	sw   $t0, 15276($gp)
+	sw   $t0, 15280($gp)
+	sw   $t0, 15284($gp)
+	sw   $t0, 15288($gp)
+	sw   $t0, 15292($gp)
+	sw   $t0, 15296($gp)
+	sw   $t0, 15300($gp)
+	sw   $t0, 15412($gp)	# 10th Row
+	sw   $t0, 15416($gp)
+	sw   $t0, 15420($gp)
+	sw   $t0, 15424($gp)
+	sw   $t0, 15428($gp)
+	sw   $t0, 15432($gp)
+	sw   $t0, 15436($gp)
+	sw   $t0, 15440($gp)
+	sw   $t0, 15444($gp)
+	sw   $t0, 15460($gp)
+	sw   $t0, 15464($gp)
+	sw   $t0, 15468($gp)
+	sw   $t0, 15472($gp)
+	sw   $t0, 15476($gp)
+	sw   $t0, 15492($gp)
+	sw   $t0, 15496($gp)
+	sw   $t0, 15500($gp)
+	sw   $t0, 15504($gp)
+	sw   $t0, 15508($gp)
+	sw   $t0, 15512($gp)
+	sw   $t0, 15516($gp)
+	sw   $t0, 15520($gp)
+	sw   $t0, 15524($gp)
+	sw   $t0, 15532($gp)
+	sw   $t0, 15536($gp)
+	sw   $t0, 15548($gp)
+	sw   $t0, 15552($gp)
+	sw   $t0, 15556($gp)
+	sw   $t0, 15560($gp)
+	sw   $t0, 15672($gp)	# 11th Row
+	sw   $t0, 15676($gp)
+	sw   $t0, 15680($gp)
+	sw   $t0, 15684($gp)
+	sw   $t0, 15688($gp)
+	sw   $t0, 15692($gp)
+	sw   $t0, 15696($gp)
+	sw   $t0, 15724($gp)
+	sw   $t0, 15752($gp)
+	sw   $t0, 15756($gp)
+	sw   $t0, 15760($gp)
+	sw   $t0, 15764($gp)
+	sw   $t0, 15768($gp)
+	sw   $t0, 15772($gp)
+	sw   $t0, 15776($gp)
+	sw   $t0, 15788($gp)
+	sw   $t0, 15792($gp)
+	sw   $t0, 15808($gp)
+	sw   $t0, 15812($gp)
+	sw   $t0, 15816($gp)
+	sw   $t0, 15820($gp)
+
+	# "Score:"
+	sw   $t0, 16940($gp)	# 1st Row
+	sw   $t0, 16944($gp)
+	sw   $t0, 16948($gp)
+	sw   $t0, 16960($gp)
+	sw   $t0, 16964($gp)
+	sw   $t0, 16972($gp)
+	sw   $t0, 16976($gp)
+	sw   $t0, 16980($gp)
+	sw   $t0, 16988($gp)
+	sw   $t0, 16992($gp)
+	sw   $t0, 16996($gp)
+	sw   $t0, 17004($gp)
+	sw   $t0, 17008($gp)
+	sw   $t0, 17012($gp)
+	sw   $t0, 17196($gp)	# 2nd Row
+	sw   $t0, 17212($gp)
+	sw   $t0, 17228($gp)
+	sw   $t0, 17236($gp)
+	sw   $t0, 17244($gp)
+	sw   $t0, 17252($gp)
+	sw   $t0, 17260($gp)
+	sw   $t0, 17276($gp)
+	sw   $t0, 17452($gp)	# 3rd Row
+	sw   $t0, 17456($gp)
+	sw   $t0, 17460($gp)
+	sw   $t0, 17468($gp)
+	sw   $t0, 17484($gp)
+	sw   $t0, 17492($gp)
+	sw   $t0, 17500($gp)
+	sw   $t0, 17504($gp)
+	sw   $t0, 17516($gp)
+	sw   $t0, 17520($gp)
+	sw   $t0, 17716($gp)	# 4th Row
+	sw   $t0, 17724($gp)
+	sw   $t0, 17740($gp)
+	sw   $t0, 17748($gp)
+	sw   $t0, 17756($gp)
+	sw   $t0, 17764($gp)
+	sw   $t0, 17772($gp)
+	sw   $t0, 17788($gp)
+	sw   $t0, 17964($gp)	# 5th Row
+	sw   $t0, 17968($gp)
+	sw   $t0, 17972($gp)
+	sw   $t0, 17984($gp)
+	sw   $t0, 17988($gp)
+	sw   $t0, 17996($gp)
+	sw   $t0, 18000($gp)
+	sw   $t0, 18004($gp)
+	sw   $t0, 18012($gp)
+	sw   $t0, 18020($gp)
+	sw   $t0, 18028($gp)
+	sw   $t0, 18032($gp)
+	sw   $t0, 18036($gp)
+
+	# "Press [P]"
+	sw   $t0, 22172($gp)	# 1st Row
+	sw   $t0, 22176($gp)
+	sw   $t0, 22180($gp)
+	sw   $t0, 22184($gp)
+	sw   $t0, 22188($gp)
+	sw   $t0, 22192($gp)
+	sw   $t0, 22196($gp)
+	sw   $t0, 22200($gp)
+	sw   $t0, 22204($gp)
+	sw   $t0, 22428($gp)	# 2nd Row
+	sw   $t0, 22460($gp)
+	sw   $t0, 22596($gp)	# 3rd Row
+	sw   $t0, 22600($gp)
+	sw   $t0, 22604($gp)
+	sw   $t0, 22612($gp)
+	sw   $t0, 22616($gp)
+	sw   $t0, 22620($gp)
+	sw   $t0, 22628($gp)
+	sw   $t0, 22632($gp)
+	sw   $t0, 22636($gp)
+	sw   $t0, 22644($gp)
+	sw   $t0, 22648($gp)
+	sw   $t0, 22652($gp)
+	sw   $t0, 22660($gp)
+	sw   $t0, 22664($gp)
+	sw   $t0, 22668($gp)
+	sw   $t0, 22684($gp)
+	sw   $t0, 22696($gp)
+	sw   $t0, 22700($gp)
+	sw   $t0, 22704($gp)
+	sw   $t0, 22716($gp)
+	sw   $t0, 22852($gp)	# 4th Row
+	sw   $t0, 22860($gp)
+	sw   $t0, 22868($gp)
+	sw   $t0, 22876($gp)
+	sw   $t0, 22884($gp)
+	sw   $t0, 22900($gp)
+	sw   $t0, 22916($gp)
+	sw   $t0, 22940($gp)
+	sw   $t0, 22952($gp)
+	sw   $t0, 22960($gp)
+	sw   $t0, 22972($gp)
+	sw   $t0, 23108($gp)	# 5th Row
+	sw   $t0, 23112($gp)
+	sw   $t0, 23116($gp)
+	sw   $t0, 23124($gp)
+	sw   $t0, 23128($gp)
+	sw   $t0, 23140($gp)
+	sw   $t0, 23144($gp)
+	sw   $t0, 23156($gp)
+	sw   $t0, 23160($gp)
+	sw   $t0, 23164($gp)
+	sw   $t0, 23172($gp)
+	sw   $t0, 23176($gp)
+	sw   $t0, 23180($gp)
+	sw   $t0, 23196($gp)
+	sw   $t0, 23208($gp)
+	sw   $t0, 23212($gp)
+	sw   $t0, 23216($gp)
+	sw   $t0, 23228($gp)
+	sw   $t0, 23364($gp)	# 6th Row
+	sw   $t0, 23380($gp)
+	sw   $t0, 23388($gp)
+	sw   $t0, 23396($gp)
+	sw   $t0, 23420($gp)
+	sw   $t0, 23436($gp)
+	sw   $t0, 23452($gp)
+	sw   $t0, 23464($gp)
+	sw   $t0, 23484($gp)
+	sw   $t0, 23620($gp)	# 7th Row
+	sw   $t0, 23636($gp)
+	sw   $t0, 23644($gp)
+	sw   $t0, 23652($gp)
+	sw   $t0, 23656($gp)
+	sw   $t0, 23660($gp)
+	sw   $t0, 23668($gp)
+	sw   $t0, 23672($gp)
+	sw   $t0, 23676($gp)
+	sw   $t0, 23684($gp)
+	sw   $t0, 23688($gp)
+	sw   $t0, 23692($gp)
+	sw   $t0, 23708($gp)
+	sw   $t0, 23720($gp)
+	sw   $t0, 23740($gp)
+	sw   $t0, 23964($gp)	# 8th Row
+	sw   $t0, 23996($gp)
+	sw   $t0, 24220($gp)	# 9th Row
+	sw   $t0, 24224($gp)
+	sw   $t0, 24228($gp)
+	sw   $t0, 24232($gp)
+	sw   $t0, 24236($gp)
+	sw   $t0, 24240($gp)
+	sw   $t0, 24244($gp)
+	sw   $t0, 24248($gp)
+	sw   $t0, 24252($gp)
+	sw   $t0, 24476($gp)	# 10th Row
+	sw   $t0, 24480($gp)
+	sw   $t0, 24484($gp)
+	sw   $t0, 24488($gp)
+	sw   $t0, 24492($gp)
+	sw   $t0, 24496($gp)
+	sw   $t0, 24500($gp)
+	sw   $t0, 24504($gp)
+	sw   $t0, 24508($gp)
+
+	# Add Crab and Score:
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)	# Save return address on stack
+
+	addi $a0, $gp, 17036	# $a0 = position for score
+	jal  display_score
+	addi $t0, $gp, 20864
+	sw   $t0, 0($s1)	# crab.position = $gp + 20864
+	jal  stamp_crab
+	
+	lw   $ra, 0($sp)	# Restore return address
+	addi $sp, $sp, 4
+
+	# Return to caller
+	jr   $ra
+# ---------------------------------------------------------------------------------------
+
 
 #########################################################################
 #	UN-PAINTING FUNCTIONS						#
