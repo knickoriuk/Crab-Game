@@ -80,11 +80,6 @@ crab:		.space		12
 #	int state; 	# 0-walk_0, 1-walk_1, 2-jump/fall, 3-dead
 #	int jump_timer; # counts down frames of rising, before falling down
 # } crab;
-world:		.space		8
-# struct world {
-#	int level:	# 0,1,2,3,4,5,6... However many I end up making
-#	int darkness:	# 9,8,7,6,5,4,3,2,1,0
-# }
 clam:		.space		8
 # struct clam {
 #	int state;	# 0 if invisible, 1 if open, 2 if closed
@@ -124,7 +119,7 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 .globl main
 
 ########## Register Assignment for main() ##########
-# $s0 - `world` data pointer
+# $s0 - Current level (starting at 9, working towards 0)
 # $s1 - `crab` data pointer
 # $s2 - Last crab location
 # $s3 - Score
@@ -135,12 +130,11 @@ platforms:	.space		48	# Stores pairs of (position, length) for platforms
 # $t0 - temporary values
 
 ########## Initialize Game Values ##########
-main:	la   $s0, world
-	la   $s1, crab
-	li   $s3, 0
-	li   $s5, SEA_COL_9
-	li   $s6, 0
-	li   $s7, 0
+main:	li   $s0, 9	# $s0 = Level
+	la   $s1, crab	# $s1 = *crab
+	li   $s3, 0	# $s3 = Score
+	li   $s6, 0	# $s6 = Timer
+	li   $s7, 0	# $s7 = Dead/alive
 	
 	# Setup data for Level 0
 	jal  gen_level_0
@@ -171,10 +165,8 @@ get_keystroke:
 	
 ########## Construct Next Level ##########
 
-next_level: # Update `world` struct:
-	lw   $t0, 0($s0)	# $t0 = world.level
-	addi $t0, $t0, 1	# $t0 = world.level + 1
-	sw   $t0, 0($s0)	# world.level = world.level + 1
+next_level: # Modify level in $s0
+	addi $s0, $s0, -1	# level = level - 1
 	
 	# Setup data for next level
 	jal  gen_next_level
@@ -411,6 +403,12 @@ dj_down: # Move crab down
 	li   $s7, 1		# Set dead/alive flag to 1, for dead
 	li   $t4, 3
 	sw   $t4, 4($s1)	# crab.state = 3 (dead)
+	lw   $a0, 0($s1) 	# $a0 = crab.pos
+	addi $sp, $sp, -4
+	sw   $ra, 0($sp)	# Push $ra on stack
+	jal  unstamp_crab
+	lw   $ra, 0($sp)	# Restore $ra from stack
+	addi $sp, $sp, 4
 	j    dj_exit
 
 dj_down_check: # Must determine if we are on/would fall through a platform
@@ -714,6 +712,8 @@ dc_check_puff: # Check collisions with pufferfish
 		li   $s7, 1	# set alive/dead flag to dead
 		li   $t1, 3
 		sw   $t1, 4($s1) # crab.state = 3 (dead)
+		lw   $a0, 0($s1) # $a0 = crab.pos
+		jal  unstamp_crab
 		
 		# Don't check anything else, you're dead
 		j    dc_done
@@ -746,6 +746,8 @@ dc_check_piranhas: # Check collisions with piranhas
 			li   $s7, 1	# set alive/dead flag to dead
 			li   $t1, 3
 			sw   $t1, 4($s1) # crab.state = 3 (dead)
+			lw   $a0, 0($s1) # $a0 = crab.pos
+			jal  unstamp_crab
 			
 			# Don't check anything else, you are dead
 			j    dc_done
@@ -923,13 +925,8 @@ dc_done:
 # gen_level_0():
 # 	Sets up level 0 details in global structs
 gen_level_0:
-
-	# world data
-	li   $t0, 0
-	sw   $t0, 0($s0)	# world.level = 0
-	li   $t0, 9
-	sw   $t0, 4($s0)	# world.darkness = 9
-
+	li   $s5, SEA_COL_9	# Store current BG color
+	
 	# crab data
 	addi $t0, $gp, INIT_POS
 	sw   $t0, 0($s1)	# crab.pos = addr($gp) + INIT_POS
@@ -1028,10 +1025,8 @@ gen_level_0:
 
 
 #  gen_next_level():
-#	Sets up the structs according to the level specified in world.level
-gen_next_level:
-	lw   $t0, 0($s0)	# $t0 = world.level
-	
+#	Sets up the structs according to the level specified in $s0
+gen_next_level:	
 	# Calculate time bonus for level
 	li   $t1, MAX_TIME
 	sub  $t1, $t1, $s6	# $t1 = MAX_TIME - (time to complete level)
@@ -1041,20 +1036,20 @@ gen_next_level:
 
 gen_level_select:
 	# Branch to correct level setup:
-	beq  $t0, 1, gen_level_1
-	beq  $t0, 2, gen_level_2
-	beq  $t0, 3, gen_level_1
-	beq  $t0, 4, gen_level_1
-	beq  $t0, 5, gen_level_1
-	beq  $t0, 6, gen_level_1
-	# TODO: WIN CONDITION: Deal with the last level differently
+	beq  $s0, 8, gen_level_1
+	beq  $s0, 7, gen_level_2
+	beq  $s0, 6, gen_level_3
+	beq  $s0, 5, gen_level_4
+	beq  $s0, 4, gen_level_5
+	beq  $s0, 3, gen_level_6
+	beq  $s0, 2, gen_level_7
+	beq  $s0, 1, gen_level_8
+	beq  $s0, 0, gen_level_9
+	bltz $s0, win_screen
 
 gen_level_1: ##### LEVEL ONE #####
-	# world data
-	li   $t0, 8
-	sw   $t0, 4($s0)	# world.darkness = 8
 	li   $s5, SEA_COL_8	# Store current BG color
-
+	
 	# crab data
 	lw   $t0, 0($s1)
 	add  $t0, $t0, 28928	# Move crab down to bottom of display
@@ -1117,9 +1112,6 @@ gen_level_1: ##### LEVEL ONE #####
 	jr   $ra
 	
 gen_level_2: ##### LEVEL TWO #####
-	# world data
-	li   $t0, 7
-	sw   $t0, 4($s0)	# world.darkness = 7
 	li   $s5, SEA_COL_7	# Store current BG color
 
 	# crab data
@@ -1205,9 +1197,28 @@ gen_level_2: ##### LEVEL TWO #####
 	jr   $ra
 	
 gen_level_3: ##### LEVEL THREE #####
+	j    gen_level_1 # temporary
 	jr   $ra
 	
 gen_level_4: ##### LEVEL FOUR #####
+	jr   $ra
+	
+gen_level_5: ##### LEVEL FIVE #####
+	jr   $ra
+	
+gen_level_6: ##### LEVEL SIX #####
+	jr   $ra
+	
+gen_level_7: ##### LEVEL SEVEN #####
+	jr   $ra
+	
+gen_level_8: ##### LEVEL EIGHT #####
+	jr   $ra
+	
+gen_level_9: ##### LEVEL NINE #####
+	jr   $ra
+	
+win_screen: ##### WIN SCREEN #####
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
@@ -1241,7 +1252,7 @@ bg_end:	jr   $ra
 
 # _build_platform(*start, int length):
 #	Builds a horizontal platform starting at `*start`, with `length` units of length
-#	$t0: pixel_address, $t1-$t2: colours, $t3: length, $t6: world.darkness, $t7: temp
+#	$t0: pixel_address, $t1-$t2: colours, $t3: length, $t7: temp
 _build_platform:
 	# Pop parameters from stack
 	lw   $t3, 0($sp)	# $t3 = length
@@ -1253,9 +1264,8 @@ _build_platform:
 	li  $t2, 0x00ffe785	# $t2 = yellow
 	
 	# Determine darkening factor
-	lw   $t6, 4($s0)	# $t6 = world.darkness
-	li   $t7, DARKNESS	# 
-	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = $t7 * level
 	
 	# Darken colors based on darkening factor
 	sub  $t1, $t1, $t7
@@ -1342,7 +1352,7 @@ splat_exit:
 
 # stamp_crab():
 # 	"Stamps" the crab onto the display at crab.position
-#	$t0: pixel_address, $t1-$t4: colours, $t5: world.darkness, $t6: temp
+#	$t0: pixel_address, $t1-$t4: colours, $t6: temp
 stamp_crab:
 	li $t1, 0x00e35e32	# $t1 = crab base
 	li $t2, 0x00b0351c	# $t2 = crab shell
@@ -1350,9 +1360,8 @@ stamp_crab:
 	li $t4, 0x00000000	# $t4 = black
 	
 	# Determine darkening factor
-	lw $t5, 4($s0)		# $t5 = world.darkness
 	li $t6, DARKNESS	# 
-	mul $t6, $t6, $t5	# $t6 = $t6 * world.darkness
+	mul $t6, $t6, $s0	# $t6 = $t6 * level
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t6
@@ -1607,7 +1616,7 @@ crab_exit:
 
 # stamp_clam():
 # 	"Stamps" a clam shell onto the display
-#	$t0: pixel_address, $t1-$t5: colors, $t6: world.darkness, $t7: temp
+#	$t0: pixel_address, $t1-$t5: colors, $t7: temp
 stamp_clam:
 	li $t1, 0x00c496ff	# $t1 = shell midtone
 	li $t2, 0x00c7a3f7	# $t2 = shell highlight
@@ -1616,9 +1625,8 @@ stamp_clam:
 	li $t5, 0x00faf9e3	# $t5 = pearl shadow
 	
 	# Determine darkening factor
-	lw $t6, 4($s0)		# $t6 = world.darkness
-	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t7
@@ -1833,8 +1841,7 @@ sc_exit:
 
 # stamp_piranha():
 # 	"Stamps" the piranhas onto the display
-#	$t0: pixel_address, $t1-$t4: colors, $t5: piranha, 
-#	$t6: world.darkness, $t7: temp, $t8: loop index
+#	$t0: pixel_address, $t1-$t4: colors, $t5: piranha, $t7: temp, $t8: loop index
 stamp_piranha:
 	li $t1, 0x00312e73	# $t1 = base color
 	li $t2, 0x00661a1f	# $t2 = belly color
@@ -1842,9 +1849,8 @@ stamp_piranha:
 	li $t4, 0x00000000	# $t4 = black
 	
 	# Determine darkening factor
-	lw $t6, 4($s0)		# $t6 = world.darkness
-	li $t7, DARKNESS	# 
-	mul $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
 	# Darken colors based on darkening factor
 	sub $t1, $t1, $t7
@@ -2123,7 +2129,7 @@ sp_exit:
 
 # stamp_pufferfish():
 # 	"Stamps" a pufferfish onto the display
-#	$t0: pixel_address, $t1-$t5: colors, $t6: world.darkness, $t7: temp, $t8: *pufferfish,
+#	$t0: pixel_address, $t1-$t5: colors, $t7: temp, $t8: *pufferfish,
 stamp_pufferfish:
 	li   $t1, 0x00a8c267	# $t1 = base color
 	li   $t2, 0x00929644	# $t2 = fin/spikes color
@@ -2132,9 +2138,8 @@ stamp_pufferfish:
 	li   $t5, 0x00000000	# $t5 = black
 	
 	# Determine darkening factor
-	lw   $t6, 4($s0)	# $t6 = world.darkness
-	li   $t7, DARKNESS	# 
-	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
 	# Darken colors based on darkening factor
 	sub  $t1, $t1, $t7
@@ -2572,16 +2577,15 @@ spuff_done:
 	
 # stamp_seahorse():
 # 	"Stamps" a seahorse onto the display
-#	$t0: pixel_address, $t1-$t3: colors, $t5: *seahorse, $t6: world.darkness, $t7: temp
+#	$t0: pixel_address, $t1-$t3: colors, $t5: *seahorse, $t7: temp
 stamp_seahorse:
 	li   $t1, 0x00ff9815	# $t1 = seahorse colour
 	li   $t2, 0x00ffeb3b	# $t2 = fin colour
 	li   $t3, 0x00000000	# $t3 = black
 	
 	# Determine darkening factor
-	lw   $t6, 4($s0)	# $t6 = world.darkness
-	li   $t7, DARKNESS	# 
-	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
 	# Darken colors based on darkening factor
 	sub  $t1, $t1, $t7
@@ -2636,16 +2640,15 @@ ssh_done:
 #	"Stamps" the bubbles onto the display at the position in bubble.position
 #	Uses "popped" sprite for POP_TIME time counts after the time in bubble.state
 #	After BUBBLE_REGEN time since the time in bubble.state, it resets to whole bubble
-#	$t0: pixel_address, $t1: color, $t5: bubble, $t6: world.darkness, $t7: temp, $t8: loop index
+#	$t0: pixel_address, $t1: color, $t5: bubble, $t7: temp, $t8: loop index
 stamp_bubble:
 	li   $t1, 0x00ffffff	# $t1 = white
 	li   $t2, 0x000a0a0a	
 	add  $t2, $t2, $s5	# $t2 = inner bubble color, slightly lighter than BG
 	
 	# Determine darkening factor
-	lw   $t6, 4($s0)		# $t6 = world.darkness
-	li   $t7, DARKNESS	# 
-	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
 	# Darken colors based on darkening factor
 	sub  $t1, $t1, $t7
@@ -2974,16 +2977,14 @@ sb_exit:
 
 # stamp_stars():
 # 	"Stamps" all the sea stars onto the display, given what is stored in `stars`
-#	$t0: pixel_address, $t1-$t2: color, $t4: stars struct
-#	$t6: world.darkness, $t7: temp, $t8: index
+#	$t0: pixel_address, $t1-$t2: color, $t4: stars struct, $t7: temp, $t8: index
 stamp_stars:
 	li   $t1, 0x00ffeb3b	# $t1 = star colour
 	li   $t2, 0x00402000	# $t2 = glow amount
 	
 	# Determine darkening factor
-	lw   $t6, 4($s0)	# $t6 = world.darkness
-	li   $t7, DARKNESS	# 
-	mul  $t7, $t7, $t6	# $t7 = $t7 * world.darkness
+	li   $t7, DARKNESS
+	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
 	# Alter colors based on darkening factor and glow amount
 	sub  $t1, $t1, $t7
