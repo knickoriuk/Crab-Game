@@ -10,7 +10,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `DEATH_PAUSE`: duration of sleep after dying
  - `INIT_POS`: position of crab at game start, offset from $gp
  - `KEYSTROKE`: address where key inputs is stored
- - `SEA_COL_0` through `SEA_COL_4`: background colours
+ - `SEA_COL_0` through `SEA_COL_9`: background colours
  - `DARKNESS`: amount to darken sprites by, multiplied by world.darkness
  - `NUM_STARS`: maximum number of sea stars
  - `NUM_PLATFORMS`: maximum number of platforms
@@ -31,8 +31,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
    - +4: State - {0=walk_0, 1=walk_1, 2=jump, 3=dead}
    - +8: Jump timer - counts frames of rising, before falling down
  - `world`:
-   - +0: Level - {0,1,2,3,4,5, ...}
-   - +4: Darkness - {4,3,2,1,0}
+   - +0: Level - {0,1,2,3,4,5,6,7,8,9}
+   - +4: Darkness - {9,8,7,6,5,4,3,2,1,0}
  - `clam`:
    - +0: State - {0=invisible, 1=open, 2=closed}
    - +4: Position - Address of pixel
@@ -98,6 +98,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_stars()`
  - `display_score($a0=*position)`
  - `_display_number($a0=*position, $a1=number)`
+ - `display_gameover()`
 
 ### Un-Painting Functions:
  - `unstamp_crab()`
@@ -121,9 +122,10 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Add dead crab sprite~~
  - [x] ~~Add 3x5 sprites for numbers 0-9~~
  - [x] ~~Show score on screen~~
- - [ ] Fail condition / Game over screen
+ - [x] ~~Fail condition / Game over screen~~
  - [ ] Win condition / Win screen
  - [ ] Make Level 3
 
 ## Ideas: 
  - Play a two or three tone sound effect when picking up sea stars/clams/sea horse, and when dying
+ - Could get rid of `world` struct altogether, replacing it with $s0
