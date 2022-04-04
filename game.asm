@@ -45,7 +45,7 @@
 #####################################################################
 
 .eqv	WIDTH		256		# Width of display
-.eqv	SLEEP_DUR	40		# Sleep duration between loops
+.eqv	SLEEP_DUR	50		# Sleep duration between loops
 .eqv	DEATH_PAUSE	1024		# Sleep duration after death
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
@@ -60,9 +60,12 @@
 .eqv	SEA_COL_1	0x00027DD2	# 	:
 .eqv	SEA_COL_0	0x000087DB	# Sea colour, lightest
 .eqv	DARKNESS	0x00060302	# amount to darken colours by, per level
+.eqv	GLOW_AMT	0x0010100a	# amount to brighten bg color by, around seahorse and sea stars
 .eqv	NUM_STARS	8		# Maximum number of sea stars		
 .eqv	NUM_PLATFORMS	6		# Maximum number of platforms
+.eqv	TERMINAL_VEL	-6		# Maximum downward speed of crab
 .eqv	CRAB_UP_DIST	7		# Duration of crab jump ascension
+.eqv	BUBBLE_UP_DIST	6		# Duration of crab jump ascension after bouncing on a bubble
 .eqv	HORIZ_DIST	8		# Distance moved left/right per screen refresh
 .eqv	UPPER_LIMIT	0x10009000	# Height that, if surpassed, moves to next level 
 .eqv	POP_TIME	10		# Number of screen refreshes before a popped bubble dissipates
@@ -191,13 +194,13 @@ update_display2:
 	jal  update_positions	# Update positions of all entities
 	jal  detect_collisions
 	
-	jal  stamp_piranha
+	jal  stamp_seahorse
+	jal  stamp_stars
 	jal  stamp_pufferfish
+	jal  stamp_piranha
 	jal  stamp_platforms
 	jal  stamp_bubble
-	jal  stamp_stars
 	jal  stamp_clam
-	jal  stamp_seahorse
 	jal  stamp_crab
 	addi $a0, $gp, 940	# $a0 = *position for scoreboard
 	jal  display_score
@@ -381,6 +384,11 @@ do_jumps:
 	lw   $t2, 0($s1)	# $t2 = crab.position
 	lw   $t3, 8($s1)	# $t3 = crab.jump_timer
 	
+	# if crab.jump_timer < TERMINAL_VEL, replace it with TERMINAL_VEL
+	bgt  $t3, TERMINAL_VEL, dj_direction_check
+	li   $t3, TERMINAL_VEL
+
+dj_direction_check:	
 	# Check jump timer	
 	bgtz $t3, dj_up		# if jump_timer > 0, move up that amount and decrease jump_timer
 	blez $t3, dj_down	# if jump_timer <= 0, move down that amount and decrease jump_timer
@@ -572,7 +580,7 @@ update_piranha2: # Update piranha2
 	la   $t0, piranha2	# $t0 = *piranha2
 	lw   $t1, 0($t0)	# $t1 = piranha2.state
 	lw   $t2, 4($t0)	# $t2 = piranha2.pos
-	move $a0, $t2		# $a0 = original piranha.pos
+	move $a0, $t2		# $a0 = original piranha2.pos
 	
 	beq  $t1, 0 update_bubble1	# if piranha.state == 0, is invisible; skip it
 	beq  $t1, 1, move_piran2_left	# If piranha.state == 1, move it left
@@ -595,10 +603,9 @@ update_piranha2: # Update piranha2
 	jal  unstamp_piranha
 	j    update_bubble1
 	
-move_piran2_left: # Move Piranha1 Left
+move_piran2_left: # Move Piranha2 Left
 	addi $t2, $t2, -4
-	sw   $t2, 4($t0)	# piranha2.pos = 1 pixel left of old piranha.pos
-	jal  unstamp_piranha	# Remove piranha from display 
+	sw   $t2, 4($t0)	# piranha2.pos = 1 pixel left of old piranha2.pos
 	
 	# If new pos is at right of display, change its direction
 	addi $t7, $t2, -28	# $t7 = left-most pixel of piranha
@@ -606,7 +613,7 @@ move_piran2_left: # Move Piranha1 Left
 	li   $t8, WIDTH		# $t8 = number of bytes in 1 row of pixels
 	div  $t7, $t8		# hi = $t7 % $t8
 	mfhi $t8		# $t8 = modulo(position, WIDTH)
-	bgtz  $t8, update_bubble1 # if remainder is > 0, don't change its direction
+	bgtz $t8, update_bubble1 # if remainder is > 0, don't change its direction
 	li   $t7, 2
 	sw   $t7, 0($t0) # Change state to 2 (right-facing)
 	jal  unstamp_piranha
@@ -699,8 +706,8 @@ dc_check_puff: # Check collisions with pufferfish
 	beqz $t1, dc_check_piranhas # if state==0, invisible; skip it
 	lw   $t1, 4($t0)	# $t1 = puffer.pos
 		
-	addi $t6, $t8, 732	# $t6 = lower left hitbox
-	addi $t7, $t9, 804	# $t7 = lower right hitbox
+	addi $t6, $t8, 988	# $t6 = lower left hitbox
+	addi $t7, $t9, 1060	# $t7 = lower right hitbox
 	li   $t3, 0		# $t3 = j =0
 	dccpu_hitbox_check:
 		beq  $t3, 16, dc_check_piranhas	# Exit loop after 16 rows checked
@@ -733,11 +740,11 @@ dc_check_piranhas: # Check collisions with piranhas
 		beqz $t1, dccpi_update	# if state==0, invisible; skip this piranha
 		lw   $t1, 4($t0)	# $t1 = piranha.pos
 		
-		addi $t6, $t8, 2544	# $t6 = lower left hitbox
-		addi $t7, $t9, 2576	# $t7 = lower right hitbox
+		addi $t6, $t8, 2540	# $t6 = lower left hitbox
+		addi $t7, $t9, 2580	# $t7 = lower right hitbox
 		li   $t3, 0		# $t3 = j =0
 		dccpi_hitbox_check:
-			beq  $t3, 8, dccpi_update	# Exit loop after 8 rows checked
+			beq  $t3, 16, dccpi_update	# Exit loop after 16 rows checked
 			# if piranha.pos not within $t6 - $t7, check next row up
 			bgt  $t1, $t7, dccpi_hitbox_update
 			blt  $t1, $t6, dccpi_hitbox_update
@@ -875,21 +882,25 @@ dc_check_bubbles:
 		bne  $t1, 1, dccb_update # if state!=1, invisible/popped; skip it
 		lw   $t1, 4($t0)	# $t1 = bubble.pos
 		
-		addi $t6, $t8, 2544	# $t6 = lower left hitbox
-		addi $t7, $t9, 2576	# $t7 = lower right hitbox
+		addi $t6, $t8, 2288	# $t6 = lower left hitbox
+		addi $t7, $t9, 2320	# $t7 = lower right hitbox
 		li   $t3, 0		# $t3 = j =0
 		dccb_hitbox_check:
-			beq  $t3, 10, dccb_update	# Exit loop after 8 rows checked
+			beq  $t3, 10, dccb_update	# Exit loop after 10 rows checked
 			# if bubble.pos not within $t6 - $t7, check next row up
 			bgt  $t1, $t7, dccb_hitbox_update
 			blt  $t1, $t6, dccb_hitbox_update
 			
 			# Otherwise, crab has collided with a bubble.
+			# Only pop bubble and bounce crab if crab was falling
+			lw   $t1, 8($s1)	# $t1 = crab.jump_timer
+			bgtz $t1, dc_done	# if jump_timer > 0, dont do collision
+						# Otherwise, crab is falling down
 			sw   $s6, 0($t0)	# set bubble.state to level timer
-			move $a0, $t1		# $a0 = bubble.pos
+			lw   $a0, 4($t0)	# $a0 = bubble.pos
 			jal  unstamp_bubble
-			li   $t1, CRAB_UP_DIST
-			sw   $t1, 8($s1)	# set crab.jump_timer to CRAB_UP_DIST
+			li   $t1, BUBBLE_UP_DIST
+			sw   $t1, 8($s1)	# set crab.jump_timer to BUBBLE_UP_DIST
 			li   $t1, 2
 			sw   $t1, 4($s1)	# set crab.state to 2 (jumping)
 			
@@ -971,9 +982,9 @@ gen_level_0:
 	sw   $t0, 0($t1)
 	li   $t0, 7 # = platform_1.len
 	sw   $t0, 4($t1)
-	addi $t0, $gp, 21676 # = platform_2.pos
+	addi $t0, $gp, 21660 # = platform_2.pos
 	sw   $t0, 8($t1)
-	li   $t0, 5 # = platform_2.len
+	li   $t0, 6 # = platform_2.len
 	sw   $t0, 12($t1)
 	addi $t0, $gp, 15104 # = platform_3.pos
 	sw   $t0, 16($t1)
@@ -1059,33 +1070,33 @@ gen_level_1: ##### LEVEL ONE #####
 	la   $t1, bubble1
 	li   $t0, 1 # = bubble1.state
 	sw   $t0, 0($t1)
-	addi $t0, $gp, 27860 # = bubble1.pos
+	addi $t0, $gp, 27604 # = bubble1.pos
 	sw   $t0, 4($t1)
 	la   $t1, bubble2
 	li   $t0, 1 # = bubble2.state
 	sw   $t0, 0($t1)
-	addi $t0, $gp, 27692 # = bubble2.pos
+	addi $t0, $gp, 27436 # = bubble2.pos
 	sw   $t0, 4($t1)
 
 	# Platforms
 	la   $t1, platforms
-	addi $t0, $gp, 31836 # = platform_1.pos
+	addi $t0, $gp, 31836 # = platform_1.pos <-- Bottom Platform
 	sw   $t0, 0($t1)
 	li   $t0, 5 # = platform_1.len
 	sw   $t0, 4($t1)
-	addi $t0, $gp, 19804 # = platform_2.pos
+	addi $t0, $gp, 20572 # = platform_2.pos
 	sw   $t0, 8($t1)
 	li   $t0, 5 # = platform_2.len
 	sw   $t0, 12($t1)
-	addi $t0, $gp, 12924 # = platform_3.pos
+	addi $t0, $gp, 13692 # = platform_3.pos
 	sw   $t0, 16($t1)
 	li   $t0, 8 # = platform_3.len
 	sw   $t0, 20($t1)	
 	addi $t0, $gp, 6912 # = platform_4.pos
 	sw   $t0, 24($t1)	
-	li   $t0, 8 # = platform_4.len
+	li   $t0, 7 # = platform_4.len
 	sw   $t0, 28($t1)	
-	addi $t0, $gp, 3740 # = platform_5.pos
+	addi $t0, $gp, 3740 # = platform_5.pos <-- Top Platform
 	sw   $t0, 32($t1)	
 	li   $t0, 4 # = platform_5.len
 	sw   $t0, 36($t1)	
@@ -1106,8 +1117,18 @@ gen_level_1: ##### LEVEL ONE #####
 	sw   $t0, 16($t1)
 	addi $t0, $gp, 27776 # = star_3.pos
 	sw   $t0, 20($t1)
-	li   $t0, 0 # = star_4.state = invisible
+	li   $t0, 1 # = star_4.state = visible
 	sw   $t0, 24($t1)
+	addi $t0, $gp, 11176 # = star_4.pos
+	sw   $t0, 28($t1)
+	li   $t0, 1 # = star_5.state = visible
+	sw   $t0, 32($t1)
+	addi $t0, $gp, 8344 # = star_5.pos
+	sw   $t0, 36($t1)
+	li   $t0, 1 # = star_6.state = visible
+	sw   $t0, 40($t1)
+	addi $t0, $gp, 6008 # = star_6.pos
+	sw   $t0, 44($t1)
 
 	jr   $ra
 	
@@ -1144,10 +1165,10 @@ gen_level_2: ##### LEVEL TWO #####
 
 	# Platforms
 	la   $t1, platforms
-	li   $t0, 3676 # = platform_1.pos
+	li   $t0, 3676 # = platform_1.pos <- Top Platform
 	add  $t0, $t0, $gp
 	sw   $t0, 0($t1)
-	li   $t0, 6 # = platform_1.len
+	li   $t0, 10 # = platform_1.len
 	sw   $t0, 4($t1)
 	li   $t0, 10956 # = platform_2.pos
 	add  $t0, $t0, $gp
@@ -1180,45 +1201,292 @@ gen_level_2: ##### LEVEL TWO #####
 	la   $t1, stars
 	li   $t0, 1 # = star_1.state = visible
 	sw   $t0, 0($t1)
-	li   $t0, 24276 # = star_1.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 24276 # = star_1.pos
 	sw   $t0, 4($t1)
 	li   $t0, 1 # = star_2.state = visible
 	sw   $t0, 8($t1)
-	li   $t0, 17380 # = star_2.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 17380 # = star_2.pos
 	sw   $t0, 12($t1)
 	li   $t0, 1 # = star_3.state = visible
 	sw   $t0, 16($t1)
-	li   $t0, 10212 # = star_3.pos
-	add  $t0, $t0, $gp
+	addi $t0, $gp, 10212 # = star_3.pos
 	sw   $t0, 20($t1)
+	li   $t0, 1 # = star_4.state = visible
+	sw   $t0, 24($t1)
+	addi $t0, $gp, 14348 # = star_4.pos
+	sw   $t0, 28($t1)
+	li   $t0, 1 # = star_5.state = visible
+	sw   $t0, 32($t1)
+	addi $t0, $gp, 14420 # = star_5.pos
+	sw   $t0, 36($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
 
 	jr   $ra
 	
 gen_level_3: ##### LEVEL THREE #####
-	j    gen_level_1 # temporary
+	li   $s5, SEA_COL_6	# Store current BG color
+
+	# crab data
+	lw   $t0, 0($s1)
+	add  $t0, $t0, 28160	# Move crab down to bottom of display
+	sw   $t0, 0($s1)
+	
+	# pufferfish data
+	la   $t1, pufferfish
+	li   $t0, 0 # = pufferfish.state = invisible
+	sw   $t0, 0($t1)
+	
+	# clam data
+	la   $t1, clam
+	li   $t0, 0 # = clam.state = invisible
+	sw   $t0, 0($t1)
+	
+	# Bubbles
+	la   $t1, bubble1
+	li   $t0, 1 # = bubble1.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 8756 # = bubble1.position
+	sw   $t0, 4($t1)
+	
+	# piranha data
+	la   $t1, piranha1
+	li   $t0, 1 # = piranha1.state = left-facing
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 18224 # = piranha1.position
+	sw   $t0, 4($t1)
+	la   $t1, piranha2
+	li   $t0, 2 # = piranha2.state = right-facing
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 24904 # = piranha2.position
+	sw   $t0, 4($t1)
+	
+	# seahorse data
+	la   $t1, seahorse
+	li   $t0, 1 # = seahorse.state = visible
+	sw   $t0, 0($t1) 
+	addi $t0, $gp, 9416 # = seahorse.position
+	sw   $t0, 4($t1)
+	
+	# Platforms
+	la   $t1, platforms
+	li   $t0, 31836 # = platform_1.pos <- Bottom Platform
+	add  $t0, $t0, $gp
+	sw   $t0, 0($t1)
+	li   $t0, 10 # = platform_1.len
+	sw   $t0, 4($t1)
+	li   $t0, 25600 # = platform_2.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 8($t1)
+	li   $t0, 7 # = platform_2.len
+	sw   $t0, 12($t1)
+	li   $t0, 18944 # = platform_3.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 16($t1)
+	li   $t0, 8 # = platform_3.len
+	sw   $t0, 20($t1)	
+	li   $t0, 12328 # = platform_4.pos
+	add  $t0, $t0, $gp
+	sw   $t0, 24($t1)	
+	li   $t0, 6 # = platform_4.len
+	sw   $t0, 28($t1)	
+	addi $t0, $gp, 3180 # = platform_5.pos <-- Top Platform
+	sw   $t0, 32($t1)	
+	li   $t0, 9 # = platform_5.len
+	sw   $t0, 36($t1)	
+	li   $t0, 0 # = platform_6.len
+	sw   $t0, 44($t1)
+	
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 1 # = star_1.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 12232 # = star_1.position
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
+	sw   $t0, 8($t1)
+	addi $t0, $gp, 14792 # = star_2.position
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
+	sw   $t0, 16($t1)
+	addi $t0, $gp, 17352 # = star_3.position
+	sw   $t0, 20($t1)
+	li   $t0, 1 # = star_4.state = visible
+	sw   $t0, 24($t1)
+	addi $t0, $gp, 19912 # = star_4.position
+	sw   $t0, 28($t1)
+	li   $t0, 1 # = star_5.state = visible
+	sw   $t0, 32($t1)
+	addi $t0, $gp, 22472 # = star_5.position
+	sw   $t0, 36($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 	
 gen_level_4: ##### LEVEL FOUR #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 	
 gen_level_5: ##### LEVEL FIVE #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 	
 gen_level_6: ##### LEVEL SIX #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 	
 gen_level_7: ##### LEVEL SEVEN #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+
 	jr   $ra
 	
 gen_level_8: ##### LEVEL EIGHT #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 	
 gen_level_9: ##### LEVEL NINE #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 	
 win_screen: ##### WIN SCREEN #####
+
+	# Sea Stars
+	la   $t1, stars
+	li   $t0, 0 # = star_1.state = invisible
+	sw   $t0, 0($t1)
+	li   $t0, 0 # = star_2.state = invisible
+	sw   $t0, 8($t1)
+	li   $t0, 0 # = star_3.state = invisible
+	sw   $t0, 16($t1)
+	li   $t0, 0 # = star_4.state = invisible
+	sw   $t0, 24($t1)
+	li   $t0, 0 # = star_5.state = invisible
+	sw   $t0, 32($t1)
+	li   $t0, 0 # = star_6.state = invisible
+	sw   $t0, 40($t1)
+	li   $t0, 0 # = star_7.state = invisible
+	sw   $t0, 48($t1)
+	li   $t0, 0 # = star_8.state = invisible
+	sw   $t0, 56($t1)
+	
 	jr   $ra
 # ---------------------------------------------------------------------------------------
 
@@ -2074,6 +2342,7 @@ sp_left: # Stamp a left-facing piranha
 	sw $s5, 32($t0)
 	sw $t1, 28($t0)
 	sw $t1, 24($t0)
+	sw $s5, 16($t0)
 	sw $t1, 12($t0)
 	sw $t1, 8($t0)
 	sw $t1, 4($t0)
@@ -2582,14 +2851,16 @@ stamp_seahorse:
 	li   $t1, 0x00ff9815	# $t1 = seahorse colour
 	li   $t2, 0x00ffeb3b	# $t2 = fin colour
 	li   $t3, 0x00000000	# $t3 = black
+	li   $t4, GLOW_AMT	# $t4 = glow amount
 	
 	# Determine darkening factor
 	li   $t7, DARKNESS
 	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
 	
-	# Darken colors based on darkening factor
+	# Modify colors based on darkening factor and glow
 	sub  $t1, $t1, $t7
 	sub  $t2, $t2, $t7
+	add  $t4, $s5, $t4
 
 	# Get pixel address and state
 	la   $t5, seahorse
@@ -2598,37 +2869,77 @@ stamp_seahorse:
 	lw   $t0, 4($t5)	# $t0 = address of pixel
 	
 	# Color the pixels appropriately
+	addi $t0, $t0, WIDTH
+	sw $t4, -4($t0)
+	sw $t4, 0($t0)
+	sw $t4, 4($t0)
+	sw $t4, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t4, -8($t0)
+	sw $t4, -4($t0)
 	sw $t1, 0($t0)
 	sw $t1, 4($t0)
+	sw $t4, 8($t0)
+	sw $t4, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
+	sw $t4, 4($t0)
 	sw $t1, 8($t0)
+	sw $t4, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -12($t0)
+	sw $t4, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
+	sw $t4, 4($t0)
+	sw $t4, 8($t0)
+	sw $t4, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -12($t0)
 	sw $t2, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
+	sw $t4, 4($t0)
+	sw $t4, 8($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -12($t0)
 	sw $t2, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
 	sw $t1, 4($t0)
+	sw $t4, 8($t0)
+	sw $t4, 12($t0)
+	sw $t4, 16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -12($t0)
 	sw $t2, -8($t0)
 	sw $t1, -4($t0)
 	sw $t3, 0($t0)
 	sw $t1, 4($t0)
 	sw $t1, 8($t0)
 	sw $t1, 12($t0)
+	sw $t4, 16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -12($t0)
+	sw $t4, -8($t0)
 	sw $t2, -4($t0)
 	sw $t1, 0($t0)
 	sw $t1, 4($t0)
+	sw $t4, 8($t0)
+	sw $t4, 12($t0)
+	sw $t4, 16($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t4, -8($t0)
+	sw $t4, -4($t0)
 	sw $t1, 0($t0)
+	sw $t4, 4($t0)
+	sw $t4, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t4, -4($t0)
+	sw $t4, 0($t0)
+	sw $t4, 4($t0)
 
 ssh_done:	
 	# Return to caller			
@@ -2980,8 +3291,8 @@ sb_exit:
 #	$t0: pixel_address, $t1-$t2: color, $t4: stars struct, $t7: temp, $t8: index
 stamp_stars:
 	li   $t1, 0x00ffeb3b	# $t1 = star colour
-	li   $t2, 0x00402000	# $t2 = glow amount
-	
+	li   $t2, GLOW_AMT	# $t2 = glow amount
+
 	# Determine darkening factor
 	li   $t7, DARKNESS
 	mul  $t7, $t7, $s0	# $t7 = DARKNESS * level
@@ -4477,24 +4788,11 @@ unstamp_seahorse:
 	move $t0, $a0		# Put seahorse pos into $t0
 	move $t1, $s5		# Put bg colour into $t1
 	
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
-	addi $t0, $t0, -WIDTH
+	addi $t0, $t0, WIDTH
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
+	sw $t1, 4($t0)
 	sw $t1, 8($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	addi $t0, $t0, -WIDTH
-	sw $t1, -8($t0)
-	sw $t1, -4($t0)
-	sw $t1, 0($t0)
-	sw $t1, 4($t0)
 	addi $t0, $t0, -WIDTH
 	sw $t1, -8($t0)
 	sw $t1, -4($t0)
@@ -4503,11 +4801,64 @@ unstamp_seahorse:
 	sw $t1, 8($t0)
 	sw $t1, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t1, -8($t0)
 	sw $t1, -4($t0)
 	sw $t1, 0($t0)
 	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
 	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
 	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -12($t0)
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	sw $t1, 12($t0)
+	sw $t1, 16($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -8($t0)
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
+	sw $t1, 8($t0)
+	addi $t0, $t0, -WIDTH
+	sw $t1, -4($t0)
+	sw $t1, 0($t0)
+	sw $t1, 4($t0)
 	
 	# Return to caller
 	jr   $ra
