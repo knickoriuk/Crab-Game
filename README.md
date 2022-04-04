@@ -11,10 +11,13 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `INIT_POS`: position of crab at game start, offset from $gp
  - `KEYSTROKE`: address where key inputs is stored
  - `SEA_COL_0` through `SEA_COL_9`: background colours
- - `DARKNESS`: amount to darken sprites by, multiplied by world.darkness
+ - `DARKNESS`: amount to darken sprites by, multiplied by level in $s0
+ - `GLOW_AMT`: amount to brighten bg color by, around seahorse and stars
  - `NUM_STARS`: maximum number of sea stars
  - `NUM_PLATFORMS`: maximum number of platforms
+ - `TERMINAL_VEL`: maximum downward speed of crab
  - `CRAB_UP_DIST`: height of crab jumps
+ - `BUBBLE_UP_DIST`: height of crab jumps after bouncing off a bubble
  - `HORIZ_DIST`: distance moved left/right 
  - `UPPER_LIMIT`: height to pass to get to next level
  - `POP_TIME`: number of screen refreshes before a popped bubble dissipates
@@ -120,8 +123,10 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Add 3x5 sprites for numbers 0-9~~
  - [x] ~~Show score on screen~~
  - [x] ~~Fail condition / Game over screen~~
+ - [x] ~~Make Level 3~~
  - [ ] Win condition / Win screen
- - [ ] Make Level 3
+ - [ ] Make Level 4
+
 
 ## Ideas: 
  - Play a two or three tone sound effect when picking up sea stars/clams/sea horse, and when dying
