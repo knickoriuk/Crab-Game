@@ -28,7 +28,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `SEAHORSE_PTS`: points earned per sea horse
 
 ### Data Structs:
- - `frame_buffer`: additional space for display (confirm this is needed?)
+ - `frame_buffer`: additional space for display
  - `crab`:
    - +0: Position - Address of pixel
    - +4: State - {0=walk_0, 1=walk_1, 2=jump, 3=dead}
@@ -124,9 +124,10 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Show score on screen~~
  - [x] ~~Fail condition / Game over screen~~
  - [x] ~~Make Level 3~~
+ - [x] ~~Make Level 4~~
  - [ ] Win condition / Win screen
- - [ ] Make Level 4
-
-
-## Ideas: 
- - Play a two or three tone sound effect when picking up sea stars/clams/sea horse, and when dying
+ - [ ] Make Level 5
+ - [ ] Make Level 6
+ - [ ] Make Level 7
+ - [ ] Make Level 8
+ - [ ] Make Level 9
