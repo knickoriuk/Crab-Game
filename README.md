@@ -85,6 +85,14 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `gen_level_0()`
  - `gen_next_level()`
 
+### Un-Painting Functions:
+ - `unstamp_crab()`
+ - `unstamp_clam($a0=*position)`
+ - `unstamp_piranha($a0=*position)`
+ - `unstamp_seahorse($a0=*position)`
+ - `unstamp_bubble($a0=*position)`
+ - `unstamp_star($a0=*position)`
+
 ### Painting Functions:
  - `generate_background()`
  - `_build_platform(*start, int length)`
@@ -99,14 +107,9 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `display_score($a0=*position)`
  - `_display_number($a0=*position, $a1=number)`
  - `display_gameover()`
-
-### Un-Painting Functions:
- - `unstamp_crab()`
- - `unstamp_clam($a0=*position)`
- - `unstamp_piranha($a0=*position)`
- - `unstamp_seahorse($a0=*position)`
- - `unstamp_bubble($a0=*position)`
- - `unstamp_star($a0=*position)`
+ - `stamp_fireworks()`
+ - `display_you_win()`
+ - `display_win_screen()`
 
 ## To do:
  - [x] ~~Ensure all `stamp_` functions have switched to using global struct data~~
@@ -125,7 +128,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Fail condition / Game over screen~~
  - [x] ~~Make Level 3~~
  - [x] ~~Make Level 4~~
- - [ ] Win condition / Win screen
+ - [x] ~~Win condition / Win screen~~
  - [ ] Make Level 5
  - [ ] Make Level 6
  - [ ] Make Level 7
