@@ -207,10 +207,21 @@ update_display2:
 	addi $a0, $gp, 940	# $a0 = *position for scoreboard
 	jal  display_score
 	
-	bne  $s7, 1, sleep	# If alive, skip to `sleep`
+	beq  $s7, 1, game_over	# If dead, skip to game over section
+
+########## Sleep and Repeat ##########
+
+sleep:	addi $s6, $s6, 1	# add 1 to timer
+	# Sleep for `SLEEP_DUR` milliseconds
+	li   $a0, SLEEP_DUR
+	li   $v0, 32
+	syscall
+	
+	j    main_loop	# Jump back to main loop, checking for next key press
 	
 ########## Game Over? ##########
 
+game_over:
 	li   $a0, DEATH_PAUSE	# Sleep a while
 	li   $v0, 32
 	syscall
@@ -238,15 +249,17 @@ game_over_loop:
 
 win:	jal  display_win_screen
 	jal  display_you_win
+	li   $s0, 5		# to darken crab stamp
 	li   $s5, 0x00090921	# set bg color to dark blue
+	li   $s6, 0		# set timer to 0
+	addi $s3, $s3, 10000	# Add win bonus to score
+
 	li   $t0, 0
 	sw   $t0, 4($s1)	# crab.state = 0 (walk_0)
 	addi $t0, $gp, 21852	
-	sw   $t0, 0($s1)	# set positon for display
-	li   $s0, 5		# to darken crab stamp
+	sw   $t0, 0($s1)	# set crab positon for display
 	jal  stamp_crab
-	li   $s6, 0		# set timer to 0
-	addi $s3, $s3, 10000	# Add win bonus to score
+
 	addi $a0, $gp, 904	# $a0 = position for score
 	jal  display_score
 
@@ -269,16 +282,6 @@ win_loop:
 	bne  $t0, 0x70, win_loop # if `p` was not pressed, loop again
 	j    main
 	
-########## Sleep and Repeat ##########
-
-sleep:	addi $s6, $s6, 1	# add 1 to timer
-	# Sleep for `SLEEP_DUR` milliseconds
-	li   $a0, SLEEP_DUR
-	li   $v0, 32
-	syscall
-	
-	j    main_loop	# Jump back to main loop, checking for next key press
-
 ########## Exit Program ##########
 	
 exit:	li   $v0, 10
@@ -392,7 +395,6 @@ key_w:	##### JUMP #####
 	j    key_input_done
 	
 key_p:	##### RESET #####
-	# TODO: some kind of display/notification
 	j    main
 	
 key_toggle_check: # If walking, toggle walk states from 0 <-> 1
@@ -1121,7 +1123,7 @@ gen_next_level:
 
 	# if $s0 has reached -1, trigger Win screen
 	# bltz $s0, win
-	beq  $s0, 4, win # for testing
+	beq  $s0, 2, win # for testing
 
 gen_level_select:
 	# Branch to correct level setup:
@@ -1273,7 +1275,7 @@ gen_level_2: ##### LEVEL TWO #####
 	sw   $t0, 32($t1)	
 	li   $t0, 3 # = platform_5.len
 	sw   $t0, 36($t1)
-	addi $t0, $gp, 31900 # = platform_6.pos
+	addi $t0, $gp, 31900 # = platform_6.pos <-- Bottom Platform
 	sw   $t0, 40($t1)	
 	li   $t0, 4 # = platform_6.len
 	sw   $t0, 44($t1)
@@ -1518,19 +1520,71 @@ gen_level_4: ##### LEVEL FOUR #####
 	jr   $ra
 	
 gen_level_5: ##### LEVEL FIVE #####
+	li   $s5, SEA_COL_4	# Store current BG color
+
+	# crab data
+	lw   $t0, 0($s1)
+	add  $t0, $t0, 29696	# Move crab down to bottom of display
+	sw   $t0, 0($s1)
+	
+	# Bubbles
+	la   $t1, bubble1
+	li   $t0, 1 # = bubble1.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 27208 # = bubble1.position
+	sw   $t0, 4($t1)
+	la   $t1, bubble2
+	li   $t0, 1 # = bubble2.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 22944 # = bubble2.position
+	sw   $t0, 4($t1)
+	
+	# clam data
+	la   $t1, clam
+	li   $t0, 0 # = clam.state = invisible
+	sw   $t0, 0($t1)
+	
+	# piranha data
+	la   $t1, piranha1
+	li   $t0, 2 # = piranha1.state = right-facing
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 15148 # = piranha1.position
+	sw   $t0, 4($t1)
+	
+	# pufferfish data
+	la   $t1, pufferfish
+	li   $t0, 0 # = pufferfish.state = invisible
+	sw   $t0, 0($t1)
+	
+	# seahorse data
+	la   $t1, seahorse
+	li   $t0, 1 # = seahorse.state = visible
+	sw   $t0, 0($t1) 
+	addi $t0, $gp, 17956 # = seahorse.position
+	sw   $t0, 4($t1)
 
 	# Sea Stars
 	la   $t1, stars
-	li   $t0, 0 # = star_1.state = invisible
+	li   $t0, 1 # = star_1.state = visible
 	sw   $t0, 0($t1)
-	li   $t0, 0 # = star_2.state = invisible
+	addi $t0, $gp, 6080 # = star_1.pos
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
 	sw   $t0, 8($t1)
-	li   $t0, 0 # = star_3.state = invisible
+	addi $t0, $gp, 9768 # = star_2.pos
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
 	sw   $t0, 16($t1)
-	li   $t0, 0 # = star_4.state = invisible
+	addi $t0, $gp, 9808 # = star_3.pos
+	sw   $t0, 20($t1)
+	li   $t0, 1 # = star_4.state = visible
 	sw   $t0, 24($t1)
-	li   $t0, 0 # = star_5.state = invisible
+	addi $t0, $gp, 9848 # = star_4.pos
+	sw   $t0, 28($t1)
+	li   $t0, 1 # = star_5.state = visible
 	sw   $t0, 32($t1)
+	addi $t0, $gp, 20516 # = star_5.pos
+	sw   $t0, 36($t1)
 	li   $t0, 0 # = star_6.state = invisible
 	sw   $t0, 40($t1)
 	li   $t0, 0 # = star_7.state = invisible
@@ -1538,22 +1592,126 @@ gen_level_5: ##### LEVEL FIVE #####
 	li   $t0, 0 # = star_8.state = invisible
 	sw   $t0, 56($t1)
 	
+	# Platforms
+	la   $t1, platforms
+	addi $t0, $gp, 31744 # = platform_1.pos <-- Bottom Platform 
+	sw   $t0, 0($t1)
+	li   $t0, 4 # = platform_1.len
+	sw   $t0, 4($t1)
+	addi $t0, $gp, 16332 # = platform_2.pos
+	sw   $t0, 8($t1)
+	li   $t0, 3 # = platform_2.len
+	sw   $t0, 12($t1)
+	addi $t0, $gp, 10496 # = platform_3.pos
+	sw   $t0, 16($t1)
+	li   $t0, 9 # = platform_3.len
+	sw   $t0, 20($t1)	
+	addi $t0, $gp, 7096 # = platform_4.pos
+	sw   $t0, 24($t1)	
+	li   $t0, 1 # = platform_4.len
+	sw   $t0, 28($t1)	
+	addi $t0, $gp, 2144 # = platform_5.pos <-- Top Platform
+	sw   $t0, 32($t1)	
+	li   $t0, 2 # = platform_5.len
+	sw   $t0, 36($t1)
+	li   $t0, 0 # = platform_6.len
+	sw   $t0, 44($t1)
+	li   $t0, 0 # = platform_7.len
+	sw   $t0, 52($t1)
+	
 	jr   $ra
 	
 gen_level_6: ##### LEVEL SIX #####
+	li   $s5, SEA_COL_3	# Store current BG color
+
+	# crab data
+	lw   $t0, 0($s1)
+	add  $t0, $t0, 29696	# Move crab down to bottom of display
+	sw   $t0, 0($s1)
+	
+	# seahorse data
+	la   $t1, seahorse
+	li   $t0, 0 # = seahorse.state = invisible
+	sw   $t0, 0($t1)
+	
+	# piranha data
+	la   $t1, piranha1
+	li   $t0, 2 # = piranha1.state = right-facing
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 24016 # = piranha1.position
+	sw   $t0, 4($t1)
+	la   $t1, piranha2
+	li   $t0, 1 # = piranha2.state = left-facing
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 10620 # = piranha2.position
+	sw   $t0, 4($t1)
+	
+	# pufferfish data
+	la   $t1, pufferfish
+	li   $t0, 2 # = pufferfish.state = descending
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 13700 # = pufferfish.position
+	sw   $t0, 4($t1)
+	
+	# Bubbles
+	la   $t1, bubble1
+	li   $t0, 1 # = bubble1.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 9860 # = bubble1.position
+	sw   $t0, 4($t1)
+	la   $t1, bubble2
+	li   $t0, 0 # = bubble2.state = invisible
+	sw   $t0, 0($t1)
+	
+	# Platforms
+	la   $t1, platforms
+	addi $t0, $gp, 31840 # = platform_1.pos <-- Bottom Platform 
+	sw   $t0, 0($t1)
+	li   $t0, 2 # = platform_1.len
+	sw   $t0, 4($t1)
+	addi $t0, $gp, 24576 # = platform_2.pos
+	sw   $t0, 8($t1)
+	li   $t0, 4 # = platform_2.len
+	sw   $t0, 12($t1)
+	addi $t0, $gp, 18532 # = platform_3.pos
+	sw   $t0, 16($t1)
+	li   $t0, 4 # = platform_3.len
+	sw   $t0, 20($t1)	
+	addi $t0, $gp, 11452 # = platform_4.pos
+	sw   $t0, 24($t1)	
+	li   $t0, 4 # = platform_4.len
+	sw   $t0, 28($t1)	
+	addi $t0, $gp, 3172 # = platform_5.pos <-- Top Platform
+	sw   $t0, 32($t1)	
+	li   $t0, 4 # = platform_5.len
+	sw   $t0, 36($t1)
+	li   $t0, 0 # = platform_6.len
+	sw   $t0, 44($t1)
+	li   $t0, 0 # = platform_7.len
+	sw   $t0, 52($t1)
 
 	# Sea Stars
 	la   $t1, stars
-	li   $t0, 0 # = star_1.state = invisible
+	li   $t0, 1 # = star_1.state = visible
 	sw   $t0, 0($t1)
-	li   $t0, 0 # = star_2.state = invisible
+	addi $t0, $gp, 17796 # = star_1.pos
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
 	sw   $t0, 8($t1)
-	li   $t0, 0 # = star_3.state = invisible
+	addi $t0, $gp, 15236 # = star_2.pos
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
 	sw   $t0, 16($t1)
-	li   $t0, 0 # = star_4.state = invisible
+	addi $t0, $gp, 12676 # = star_3.pos
+	sw   $t0, 20($t1)
+	li   $t0, 1 # = star_4.state = visible
 	sw   $t0, 24($t1)
-	li   $t0, 0 # = star_5.state = invisible
+	addi $t0, $gp, 23584 # = star_4.pos
+	sw   $t0, 28($t1)
+	li   $t0, 1 # = star_5.state = visible
 	sw   $t0, 32($t1)
+	addi $t0, $gp, 10716 # = star_5.pos
+	sw   $t0, 36($t1)
 	li   $t0, 0 # = star_6.state = invisible
 	sw   $t0, 40($t1)
 	li   $t0, 0 # = star_7.state = invisible
