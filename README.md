@@ -10,7 +10,7 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `DEATH_PAUSE`: duration of sleep after dying
  - `INIT_POS`: position of crab at game start, offset from $gp
  - `KEYSTROKE`: address where key inputs is stored
- - `SEA_COL_0` through `SEA_COL_9`: background colours
+ - `SEA_COL_0` through `SEA_COL_7`: background colours
  - `DARKNESS`: amount to darken sprites by, multiplied by level in $s0
  - `GLOW_AMT`: amount to brighten bg color by, around seahorse and stars
  - `NUM_STARS`: maximum number of sea stars
@@ -131,6 +131,4 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Win condition / Win screen~~
  - [x] ~~Make Level 5~~
  - [x] ~~Make Level 6~~
- - [ ] Make Level 7
- - [ ] Make Level 8
- - [ ] Make Level 9
+ - [x] ~~Make Level 7~~
