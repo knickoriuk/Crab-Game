@@ -19,7 +19,7 @@
 # 
 # Which approved features have been implemented for milestone 3? 
 # (See the assignment handout for the list of additional features) 
-# 1. Moving Objects (Piranhas, Pufferfish) 
+# 1. Moving Objects (Piranhas, Pufferfish, Seahorse) 
 # 2. Disappearing Platforms (Bubbles)
 # 3. Different Levels
 # 4. Fail Condition
@@ -36,13 +36,14 @@
 # - GitHub Link: https://github.com/knickoriuk/Crab-Game
 # 
 # Any additional information that the TA needs to know: 
-# - The file "game_display.asm" must be located in the same directory as the 
-#   MARS .jar file so it can be imported properly to run.
+# - The file "game_display.asm" needs to be imported by this file for the game to run.
+# - On Windows, "game_display.asm" has to be in the same directory as "MARS.jar"
+# - On Linux it needs to be in the same location as "game.asm"
 # 
 #####################################################################
 
 .eqv	WIDTH		256		# Width of display
-.eqv	SLEEP_DUR	45		# Sleep duration between loops
+.eqv	SLEEP_DUR	50		# Sleep duration between loops
 .eqv	DEATH_PAUSE	1024		# Sleep duration after death
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
@@ -182,26 +183,27 @@ next_level: # Modify level in $s0
 
 update_display:
 	jal  do_jumps		# Move crab up or down
-	
-	# Flicker prevention: only unstamp crab if it moved
-	lw   $t9, 0($s1)		# $t9 = crab.position
-	beq  $s2, $t9, update_display2	# if new pos == old pos, skip next line
-	jal  unstamp_crab		# remove old crab from display
 
-update_display2:
 	# Entities, if they move, are removed from display in update_positions() or detect_collisions()
 	jal  detect_collisions
 	jal  update_positions
-
+	
 	jal  stamp_seahorse
 	jal  stamp_stars
 	jal  stamp_bubble
 	jal  stamp_pufferfish
 	jal  stamp_piranha
-	jal  stamp_platforms
 	jal  stamp_clam
-	jal  stamp_crab
 
+	# Flicker prevention: only unstamp crab if it moved
+	lw   $t0, 0($s1)		# $t0 = crab.position
+	beq  $s2, $t0, update_display2	# if new pos == old pos, skip next line
+	jal  unstamp_crab		# remove old crab from display
+update_display2:
+
+	jal  stamp_platforms
+	jal  stamp_crab
+	
 	addi $a0, $gp, 940	# $a0 = *position for scoreboard
 	jal  display_score
 	
@@ -222,48 +224,49 @@ game_over_loop:
 	li   $v0, 32
 	syscall
 	
-	li   $t9, KEYSTROKE
-	lw   $t9, 0($t9) 	# $t0 = 1 if key hit, 0 otherwise
+	li   $t0, KEYSTROKE
+	lw   $t0, 0($t0) 	 # $t0 = 1 if key hit, 0 otherwise
 	
-	beqz $t9, game_over_loop # loop until a key is pressed
-	li   $t9, KEYSTROKE
-	lw   $t9, 4($t9)  	 # $t9 = last key hit 
-	beq  $t9, 0x71, exit	 # exit program if `q` pressed
-	bne  $t9, 0x70, game_over_loop # if `p` was not pressed, loop again
+	beqz $t0, game_over_loop # loop until a key is pressed
+	li   $t0, KEYSTROKE
+	lw   $t0, 4($t0)  	 # $t0 = last key hit 
+	beq  $t0, 0x71, exit	 # exit program if `q` pressed
+	bne  $t0, 0x70, game_over_loop # if `p` was not pressed, loop again
 	j    main
 
 ########## You Won! ##########
 
 win:	jal  display_win_screen
+	jal  display_you_win
 	li   $s5, 0x00090921	# set bg color to dark blue
-	li   $t9, 0
-	sw   $t9, 4($s1)	# crab.state = 0 (walk_0)
-	addi $t9, $gp, 21852	
-	sw   $t9, 0($s1)	# set positon for display
+	li   $t0, 0
+	sw   $t0, 4($s1)	# crab.state = 0 (walk_0)
+	addi $t0, $gp, 21852	
+	sw   $t0, 0($s1)	# set positon for display
 	li   $s0, 5		# to darken crab stamp
 	jal  stamp_crab
 	li   $s6, 0		# set timer to 0
 	addi $s3, $s3, 10000	# Add win bonus to score
-win_loop:
-	jal  stamp_fireworks
-	jal  display_you_win
 	addi $a0, $gp, 904	# $a0 = position for score
 	jal  display_score
 
+win_loop:
+	jal  stamp_fireworks
+
 	addi $s6, $s6, 1	# add 1 to timer
-	li   $a0, 60	
+	li   $a0, 75	
 	li   $v0, 32
-	syscall			# Sleep ~60 ms
+	syscall			# Sleep ~75 ms
 
 	# Only exit if 'p' was pressed, otherwise loop
-	li   $t9, KEYSTROKE
-	lw   $t9, 0($t9) 	# $t0 = 1 if key hit, 0 otherwise
+	li   $t0, KEYSTROKE
+	lw   $t0, 0($t0) 	# $t0 = 1 if key hit, 0 otherwise
 	
-	beqz $t9, win_loop # loop until a key is pressed
-	li   $t9, KEYSTROKE
-	lw   $t9, 4($t9)  	 # $t9 = last key hit 
-	beq  $t9, 0x71, exit	 # exit program if `q` pressed
-	bne  $t9, 0x70, win_loop # if `p` was not pressed, loop again
+	beqz $t0, win_loop # loop until a key is pressed
+	li   $t0, KEYSTROKE
+	lw   $t0, 4($t0)  	 # $t0 = last key hit 
+	beq  $t0, 0x71, exit	 # exit program if `q` pressed
+	bne  $t0, 0x70, win_loop # if `p` was not pressed, loop again
 	j    main
 	
 ########## Sleep and Repeat ##########
