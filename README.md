@@ -129,8 +129,8 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - [x] ~~Make Level 3~~
  - [x] ~~Make Level 4~~
  - [x] ~~Win condition / Win screen~~
- - [ ] Make Level 5
- - [ ] Make Level 6
+ - [x] ~~Make Level 5~~
+ - [x] ~~Make Level 6~~
  - [ ] Make Level 7
  - [ ] Make Level 8
  - [ ] Make Level 9
