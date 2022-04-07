@@ -47,17 +47,15 @@
 .eqv	DEATH_PAUSE	1024		# Sleep duration after death
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
-.eqv	SEA_COL_9	0x00004390	# Sea colour, darkest
-.eqv	SEA_COL_8	0x00004b95	#	:
-.eqv	SEA_COL_7	0x0000539a	#	:
-.eqv	SEA_COL_6	0x00005a9e	#	:
-.eqv	SEA_COL_5	0x000062a3	#	:
-.eqv	SEA_COL_4	0x00006aa8	#	:
-.eqv	SEA_COL_3	0x000072ad	#	:
-.eqv	SEA_COL_2	0x000079b1	#	:
-.eqv	SEA_COL_1	0x000081b6	# 	:
+.eqv	SEA_COL_7	0x00004390	# Sea colour, darkest
+.eqv	SEA_COL_6	0x00004d96	#	:
+.eqv	SEA_COL_5	0x0000579c	#	:
+.eqv	SEA_COL_4	0x000061a2	#	:
+.eqv	SEA_COL_3	0x00006ba9	#	:
+.eqv	SEA_COL_2	0x000075af	#	:
+.eqv	SEA_COL_1	0x00007fb5	# 	:
 .eqv	SEA_COL_0	0x000089bb	# Sea colour, lightest
-.eqv	DARKNESS	0x00070300	# amount to darken colours by, per level
+.eqv	DARKNESS	0x000b0602	# amount to darken colours by, per level
 .eqv	GLOW_AMT	0x002c1b00	# amount to brighten bg color by, around seahorse and sea stars
 .eqv	NUM_STARS	8		# Maximum number of sea stars		
 .eqv	NUM_PLATFORMS	7		# Maximum number of platforms
@@ -122,7 +120,7 @@ platforms:	.space		56	# Stores pairs of (position, length) for platforms
 .globl main
 
 ########## Register Assignment for main() ##########
-# $s0 - Current level (starting at 9, working towards 0)
+# $s0 - Current level (starting at 7, working towards 0)
 # $s1 - `crab` data pointer
 # $s2 - Last crab location
 # $s3 - Score
@@ -133,7 +131,7 @@ platforms:	.space		56	# Stores pairs of (position, length) for platforms
 # $t0 - temporary values
 
 ########## Initialize Game Values ##########
-main:	li   $s0, 9	# $s0 = Level
+main:	li   $s0, 7	# $s0 = Level
 	la   $s1, crab	# $s1 = *crab
 	li   $s3, 0	# $s3 = Score
 	li   $s6, 0	# $s6 = Timer
@@ -247,16 +245,23 @@ game_over_loop:
 
 ########## You Won! ##########
 
-win:	jal  display_win_screen
+win:	li   $s5, 0		# set bg color to black
+	jal generate_background	# For a short black screen
+	
+	li   $a0, 256		# Sleep for ~256 ms
+	li   $v0, 32
+	syscall	
+
+	jal  display_win_screen
 	jal  display_you_win
-	li   $s0, 5		# to darken crab stamp
+	li   $s0, 3		# to darken crab stamp
 	li   $s5, 0x00090921	# set bg color to dark blue
 	li   $s6, 0		# set timer to 0
 	addi $s3, $s3, 10000	# Add win bonus to score
 
 	li   $t0, 0
 	sw   $t0, 4($s1)	# crab.state = 0 (walk_0)
-	addi $t0, $gp, 21852	
+	addi $t0, $gp, 22376
 	sw   $t0, 0($s1)	# set crab positon for display
 	jal  stamp_crab
 
@@ -1009,7 +1014,7 @@ dc_done:
 # gen_level_0():
 # 	Sets up level 0 details in global structs
 gen_level_0:
-	li   $s5, SEA_COL_9	# Store current BG color
+	li   $s5, SEA_COL_7	# Store current BG color
 	
 	# crab data
 	addi $t0, $gp, INIT_POS
@@ -1122,23 +1127,20 @@ gen_next_level:
 	add  $s3, $s3, $t1	# Add time bonus to score
 
 	# if $s0 has reached -1, trigger Win screen
-	# bltz $s0, win
-	beq  $s0, 2, win # for testing
+	bltz $s0, win
 
 gen_level_select:
 	# Branch to correct level setup:
-	beq  $s0, 8, gen_level_1
-	beq  $s0, 7, gen_level_2
-	beq  $s0, 6, gen_level_3
-	beq  $s0, 5, gen_level_4
-	beq  $s0, 4, gen_level_5
-	beq  $s0, 3, gen_level_6
-	beq  $s0, 2, gen_level_7
-	beq  $s0, 1, gen_level_8
-	beq  $s0, 0, gen_level_9
+	beq  $s0, 6, gen_level_1
+	beq  $s0, 5, gen_level_2
+	beq  $s0, 4, gen_level_3
+	beq  $s0, 3, gen_level_4
+	beq  $s0, 2, gen_level_5
+	beq  $s0, 1, gen_level_6
+	beq  $s0, 0, gen_level_7
 
 gen_level_1: ##### LEVEL ONE #####
-	li   $s5, SEA_COL_8	# Store current BG color
+	li   $s5, SEA_COL_6	# Store current BG color
 	
 	# crab data
 	lw   $t0, 0($s1)
@@ -1219,7 +1221,7 @@ gen_level_1: ##### LEVEL ONE #####
 	jr   $ra
 	
 gen_level_2: ##### LEVEL TWO #####
-	li   $s5, SEA_COL_7	# Store current BG color
+	li   $s5, SEA_COL_5	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -1309,7 +1311,7 @@ gen_level_2: ##### LEVEL TWO #####
 	jr   $ra
 	
 gen_level_3: ##### LEVEL THREE #####
-	li   $s5, SEA_COL_6	# Store current BG color
+	li   $s5, SEA_COL_4	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -1409,7 +1411,7 @@ gen_level_3: ##### LEVEL THREE #####
 	jr   $ra
 	
 gen_level_4: ##### LEVEL FOUR #####
-	li   $s5, SEA_COL_5	# Store current BG color
+	li   $s5, SEA_COL_3	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -1520,7 +1522,7 @@ gen_level_4: ##### LEVEL FOUR #####
 	jr   $ra
 	
 gen_level_5: ##### LEVEL FIVE #####
-	li   $s5, SEA_COL_4	# Store current BG color
+	li   $s5, SEA_COL_2	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -1612,7 +1614,7 @@ gen_level_5: ##### LEVEL FIVE #####
 	sw   $t0, 28($t1)	
 	addi $t0, $gp, 2144 # = platform_5.pos <-- Top Platform
 	sw   $t0, 32($t1)	
-	li   $t0, 2 # = platform_5.len
+	li   $t0, 3 # = platform_5.len
 	sw   $t0, 36($t1)
 	li   $t0, 0 # = platform_6.len
 	sw   $t0, 44($t1)
@@ -1622,7 +1624,7 @@ gen_level_5: ##### LEVEL FIVE #####
 	jr   $ra
 	
 gen_level_6: ##### LEVEL SIX #####
-	li   $s5, SEA_COL_3	# Store current BG color
+	li   $s5, SEA_COL_1	# Store current BG color
 
 	# crab data
 	lw   $t0, 0($s1)
@@ -1667,7 +1669,7 @@ gen_level_6: ##### LEVEL SIX #####
 	la   $t1, platforms
 	addi $t0, $gp, 31840 # = platform_1.pos <-- Bottom Platform 
 	sw   $t0, 0($t1)
-	li   $t0, 2 # = platform_1.len
+	li   $t0, 3 # = platform_1.len
 	sw   $t0, 4($t1)
 	addi $t0, $gp, 24576 # = platform_2.pos
 	sw   $t0, 8($t1)
@@ -1722,71 +1724,114 @@ gen_level_6: ##### LEVEL SIX #####
 	jr   $ra
 	
 gen_level_7: ##### LEVEL SEVEN #####
+	li   $s5, SEA_COL_0	# Store current BG color
+
+	# crab data
+	lw   $t0, 0($s1)
+	add  $t0, $t0, 28672	# Move crab down to bottom of display
+	sw   $t0, 0($s1)
+	
+	# seahorse data
+	la   $t1, seahorse
+	li   $t0, 1 # = seahorse.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 11732 # = seahorse.position
+	sw   $t0, 4($t1)
+	
+	# piranha data
+	la   $t1, piranha1
+	li   $t0, 1 # = piranha1.state = left-facing
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 17860 # = piranha1.position
+	sw   $t0, 4($t1)
+	la   $t1, piranha2
+	li   $t0, 0 # = piranha2.state = invisible
+	sw   $t0, 0($t1)
+	
+	# pufferfish data
+	la   $t1, pufferfish
+	li   $t0, 1 # = pufferfish.state = ascending
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 25288 # = pufferfish.position
+	sw   $t0, 4($t1)
+	
+	# Bubbles
+	la   $t1, bubble1
+	li   $t0, 1 # = bubble1.state = visible
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 9320 # = bubble1.position
+	sw   $t0, 4($t1)
+	
+	# clam data
+	la   $t1, clam
+	li   $t0, 1 # = clam.state = open
+	sw   $t0, 0($t1)
+	addi $t0, $gp, 5084 # = clam.position
+	sw   $t0, 4($t1)
+	
+	# Platforms
+	la   $t1, platforms
+	addi $t0, $gp, 31844 # = platform_1.pos <-- Bottom Platform 
+	sw   $t0, 0($t1)
+	li   $t0, 4 # = platform_1.len
+	sw   $t0, 4($t1)
+	addi $t0, $gp, 25120 # = platform_2.pos
+	sw   $t0, 8($t1)
+	li   $t0, 8 # = platform_2.len
+	sw   $t0, 12($t1)
+	addi $t0, $gp, 18540 # = platform_3.pos
+	sw   $t0, 16($t1)
+	li   $t0, 8 # = platform_3.len
+	sw   $t0, 20($t1)	
+	addi $t0, $gp, 12288 # = platform_4.pos
+	sw   $t0, 24($t1)	
+	li   $t0, 6 # = platform_4.len
+	sw   $t0, 28($t1)	
+	addi $t0, $gp, 5292 # = platform_5.pos
+	sw   $t0, 32($t1)	
+	li   $t0, 5 # = platform_5.len
+	sw   $t0, 36($t1)
+	addi $t0, $gp, 2560 # = platform_6.pos
+	sw   $t0, 40($t1)
+	li   $t0, 4 # = platform_6.len
+	sw   $t0, 44($t1)
+	li   $t0, 0 # = platform_7.len
+	sw   $t0, 52($t1)
 
 	# Sea Stars
 	la   $t1, stars
-	li   $t0, 0 # = star_1.state = invisible
+	li   $t0, 1 # = star_1.state = visible
 	sw   $t0, 0($t1)
-	li   $t0, 0 # = star_2.state = invisible
+	addi $t0, $gp, 24376 # = star_1.pos
+	sw   $t0, 4($t1)
+	li   $t0, 1 # = star_2.state = visible
 	sw   $t0, 8($t1)
-	li   $t0, 0 # = star_3.state = invisible
+	addi $t0, $gp, 24416 # = star_2.pos
+	sw   $t0, 12($t1)
+	li   $t0, 1 # = star_3.state = visible
 	sw   $t0, 16($t1)
-	li   $t0, 0 # = star_4.state = invisible
+	addi $t0, $gp, 24456 # = star_3.pos
+	sw   $t0, 20($t1)
+	li   $t0, 1 # = star_4.state = visible
 	sw   $t0, 24($t1)
-	li   $t0, 0 # = star_5.state = invisible
+	addi $t0, $gp, 17796 # = star_4.pos
+	sw   $t0, 28($t1)
+	li   $t0, 1 # = star_5.state = visible
 	sw   $t0, 32($t1)
-	li   $t0, 0 # = star_6.state = invisible
+	addi $t0, $gp, 17836 # = star_5.pos
+	sw   $t0, 36($t1)
+	li   $t0, 1 # = star_6.state = visible
 	sw   $t0, 40($t1)
-	li   $t0, 0 # = star_7.state = invisible
+	addi $t0, $gp, 17876 # = star_6.pos
+	sw   $t0, 44($t1)
+	li   $t0, 1 # = star_7.state = visible
 	sw   $t0, 48($t1)
-	li   $t0, 0 # = star_8.state = invisible
+	addi $t0, $gp, 11552 # = star_7.pos
+	sw   $t0, 52($t1)
+	li   $t0, 1 # = star_8.state = visible
 	sw   $t0, 56($t1)
+	addi $t0, $gp, 11592 # = star_8.pos
+	sw   $t0, 60($t1)
 
-	jr   $ra
-	
-gen_level_8: ##### LEVEL EIGHT #####
-
-	# Sea Stars
-	la   $t1, stars
-	li   $t0, 0 # = star_1.state = invisible
-	sw   $t0, 0($t1)
-	li   $t0, 0 # = star_2.state = invisible
-	sw   $t0, 8($t1)
-	li   $t0, 0 # = star_3.state = invisible
-	sw   $t0, 16($t1)
-	li   $t0, 0 # = star_4.state = invisible
-	sw   $t0, 24($t1)
-	li   $t0, 0 # = star_5.state = invisible
-	sw   $t0, 32($t1)
-	li   $t0, 0 # = star_6.state = invisible
-	sw   $t0, 40($t1)
-	li   $t0, 0 # = star_7.state = invisible
-	sw   $t0, 48($t1)
-	li   $t0, 0 # = star_8.state = invisible
-	sw   $t0, 56($t1)
-	
-	jr   $ra
-	
-gen_level_9: ##### LEVEL NINE #####
-
-	# Sea Stars
-	la   $t1, stars
-	li   $t0, 0 # = star_1.state = invisible
-	sw   $t0, 0($t1)
-	li   $t0, 0 # = star_2.state = invisible
-	sw   $t0, 8($t1)
-	li   $t0, 0 # = star_3.state = invisible
-	sw   $t0, 16($t1)
-	li   $t0, 0 # = star_4.state = invisible
-	sw   $t0, 24($t1)
-	li   $t0, 0 # = star_5.state = invisible
-	sw   $t0, 32($t1)
-	li   $t0, 0 # = star_6.state = invisible
-	sw   $t0, 40($t1)
-	li   $t0, 0 # = star_7.state = invisible
-	sw   $t0, 48($t1)
-	li   $t0, 0 # = star_8.state = invisible
-	sw   $t0, 56($t1)
-	
 	jr   $ra
 # ---------------------------------------------------------------------------------------
