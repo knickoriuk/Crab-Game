@@ -11,14 +11,9 @@
 # - Unit height in pixels: 4
 # - Display width in pixels: 256
 # - Display height in pixels: 512
-# - Base Address for Display: 0x10008000 ($gp) 
+# - Base Address for Display: 0x10008000 ($gp)
 # 
-# Which milestones have been reached in this submission? 
-# (See the assignment handout for descriptions of the milestones) 
-# - Milestone 3
-# 
-# Which approved features have been implemented for milestone 3? 
-# (See the assignment handout for the list of additional features) 
+# Which approved features have been implemented?
 # 1. Moving Objects (Piranhas, Pufferfish, Seahorse) 
 # 2. Disappearing Platforms (Bubbles)
 # 3. Different Levels
@@ -28,14 +23,7 @@
 # 7. Animated Sprites (Crab, Clam, Bubble)
 # 8. (Bonus) Varying light levels, sprites get brighter as you progress upwards
 # 
-# Link to video demonstration for final submission: 
-# - (insert YouTube / MyMedia / other URL here). Make sure we can view it! 
-# 
-# Are you OK with us sharing the video with people outside course staff? 
-# - yes / no / yes, and please share this project github link as well! 
-# - GitHub Link: https://github.com/knickoriuk/Crab-Game
-# 
-# Any additional information that the TA needs to know: 
+# Additional information: 
 # - The file "game_display.asm" needs to be imported by this file for the game to run.
 # - On Windows, "game_display.asm" has to be in the same directory as "MARS.jar"
 # - On Linux it needs to be in the same location as "game.asm"
@@ -43,7 +31,7 @@
 #####################################################################
 
 .eqv	WIDTH		256		# Width of display
-.eqv	SLEEP_DUR	50		# Sleep duration between loops
+.eqv	SLEEP_DUR	45		# Sleep duration between loops
 .eqv	DEATH_PAUSE	1024		# Sleep duration after death
 .eqv	INIT_POS	31640		# Initial position of the crab (offset from $gp)
 .eqv	KEYSTROKE	0xffff0000	# Address storing keystrokes & values
@@ -124,7 +112,6 @@ platforms:	.space		56	# Stores pairs of (position, length) for platforms
 # $s1 - `crab` data pointer
 # $s2 - Last crab location
 # $s3 - Score
-# $s4 -
 # $s5 - background colour
 # $s6 - timer: number of screen refreshes since level start
 # $s7 - dead/alive flag: 0=alive, 1=dead
@@ -1126,10 +1113,10 @@ gen_next_level:
 	sra  $t1, $t1, 2	# $t1 = $t1/4
 	add  $s3, $s3, $t1	# Add time bonus to score
 
+gen_level_select:
 	# if $s0 has reached -1, trigger Win screen
 	bltz $s0, win
 
-gen_level_select:
 	# Branch to correct level setup:
 	beq  $s0, 6, gen_level_1
 	beq  $s0, 5, gen_level_2
