@@ -1,6 +1,6 @@
-# Yet-to-be-Named Crab Game in Assembly
+# Crab Ascent
 
-This is a platforming game running in MIPS assembly. It operates in the MARS MIPS simulator.
+This is a platforming game made entirely from scratch using MIPS assembly, a final project for the course CSCB58 at UofT. It operates in the MARS simulator. Partake in the crab's journey as it makes its way up from the depths of the ocean, featuring hand-drawn graphics by none other than me.
 
 ## Data and Global Variables
 
@@ -68,7 +68,6 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `$s1`: Pointer to `crab` struct
  - `$s2`: Last crab position
  - `$s3`: Score
- - `$s4`:
  - `$s5`: Background colour
  - `$s6`: Timer
  - `$s7`: Dead/alive flag, {0=alive, 1=dead}
@@ -110,25 +109,3 @@ This is a platforming game running in MIPS assembly. It operates in the MARS MIP
  - `stamp_fireworks()`
  - `display_you_win()`
  - `display_win_screen()`
-
-## To do:
- - [x] ~~Ensure all `stamp_` functions have switched to using global struct data~~
- - [x] ~~Complete `unstamp_` functions~~
- - [x] ~~Implement a check in the main loop: check if crab has surpassed `UPPER_LIMIT` and switch to a new level~~
- - [x] ~~Make Level 1 (`gen_level_1()`)~~
- - [x] ~~Bubble sprite + popped sprite(?)~~
- - [x] ~~Implement `update_positions()` to move pufferfish and piranha positions~~
- - [x] ~~Detect if touching other entities~~
- - [x] ~~Implement temporary bubble platforms~~
- - [x] ~~Make Level 2~~
- - [x] ~~Falling off screen leads to game over~~
- - [x] ~~Add dead crab sprite~~
- - [x] ~~Add 3x5 sprites for numbers 0-9~~
- - [x] ~~Show score on screen~~
- - [x] ~~Fail condition / Game over screen~~
- - [x] ~~Make Level 3~~
- - [x] ~~Make Level 4~~
- - [x] ~~Win condition / Win screen~~
- - [x] ~~Make Level 5~~
- - [x] ~~Make Level 6~~
- - [x] ~~Make Level 7~~
