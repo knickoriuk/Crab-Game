@@ -1,6 +1,7 @@
 # Crab Ascent
 
-This is a platforming game made entirely from scratch using MIPS assembly, a final project for the course CSCB58 at UofT. It operates in the MARS simulator. Partake in the crab's journey as it makes its way up from the depths of the ocean, featuring hand-drawn graphics by none other than me.
+This is a platforming game made entirely from scratch using MIPS assembly, a final project for the course CSCB58 at UofT. It operates in the MARS simulator. 
+Partake in the crab's journey as it makes its way up from the depths of the ocean, featuring my own hand-drawn graphics.
 
 ## Data and Global Variables
 
